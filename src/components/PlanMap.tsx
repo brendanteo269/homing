@@ -101,6 +101,19 @@ const TIP_REACH_PX = 230;
  * slab does not take thirty presses.
  */
 const NUDGE_M = 4;
+/**
+ * A wall narrower than this on screen is a return or a lift lobby, not a
+ * facade, and ruling storeys across it only fills the block with hatching.
+ */
+const STOREY_MIN_PX = 16;
+/** Below this the storeys are closer together than the lines drawing them. */
+const STOREY_LEGIBLE_PX = 3.5;
+/**
+ * How far off the block a press may land and still be a press on it, in screen
+ * pixels. Wide enough to forgive a finger on the silhouette's edge, narrow
+ * enough that a press on the street beside it still turns the view.
+ */
+const PLACE_REACH_PX = 9;
 
 /**
  * The street map, for the reader who wants to know where this is.
@@ -149,8 +162,16 @@ interface Props {
   timeMinutes: number;
   /** Day of the year to cast shadows on, as a month/day pair. */
   day: { month: number; day: number };
-  /** Where the reader dragged the window to, snapped to a wall of the block. */
-  onPlaceWindow: (point: LatLng) => void;
+  /**
+   * Where the reader put the window: along the wall, and up the block. The
+   * storey comes back with the point because one press sets both — the drawing
+   * is the block, so pressing a wall halfway up it means that storey.
+   */
+  onPlaceWindow: (point: LatLng, floor: number) => void;
+  /** The storey being reported on, so the block can show which one it is. */
+  floor: number;
+  /** The top storey this block has. Nothing above it can be picked. */
+  maxFloor: number;
   /**
    * The placement already committed, if any. The marker is drawn from this
    * rather than from the analysis, because the analysis is a few hundred
@@ -167,7 +188,7 @@ interface Props {
 }
 
 export default function PlanMap({
-  result, timeMinutes, day, onPlaceWindow, windowAt, busy,
+  result, timeMinutes, day, onPlaceWindow, windowAt, busy, floor, maxFloor,
 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [azimuth, setAzimuth] = useState(AZIMUTH_HOME);
@@ -184,7 +205,7 @@ export default function PlanMap({
   const [hover, setHover] = useState<{ label: string; x: number; y: number; flip: boolean } | null>(null);
   // Where the marker is while a finger is on it. Null the rest of the time, so
   // the analysis stays the single source of truth once the finger lifts.
-  const [placing, setPlacing] = useState<[number, number] | null>(null);
+  const [placing, setPlacing] = useState<Spot | null>(null);
   /**
    * Whether the window can be moved by button as well as by dragging.
    *
@@ -225,14 +246,20 @@ export default function PlanMap({
 
   // Where the marker belongs, in the order of who knows best: the finger on it
   // now, then the placement already made, then the analysis.
-  const marker: [number, number] = useMemo(() => {
-    if (placing) return placing;
-    if (windowAt) {
-      const [x, y] = makeProjection(result.origin).toLocal(windowAt);
-      return [x, y];
-    }
-    return [result.viewpoint.x, result.viewpoint.y];
-  }, [placing, windowAt, result]);
+  //
+  // The storey is taken from the page rather than from the answer even after the
+  // finger lifts, because the page has it the moment it is chosen and the answer
+  // is a few hundred milliseconds behind — reading it back from the answer drops
+  // the marker to the old storey for the length of every request.
+  const marker: Marker = useMemo(() => {
+    const at: [number, number] = placing
+      ? placing.at
+      : windowAt
+        ? makeProjection(result.origin).toLocal(windowAt)
+        : [result.viewpoint.x, result.viewpoint.y];
+    const storey = placing ? placing.floor : Math.min(floor, maxFloor);
+    return { at, floor: storey, z: eyeHeight(result, storey) };
+  }, [placing, windowAt, result, floor, maxFloor]);
 
   // Wheel has to be bound by hand: React registers onWheel passively, and a
   // passive listener is not allowed to call preventDefault.
@@ -288,8 +315,8 @@ export default function PlanMap({
     const screenPx = coarse ? GRAB_RADIUS_COARSE_PX : GRAB_RADIUS_FINE_PX;
     const grab = screenPx * (W / (el.getBoundingClientRect().width || W));
     const v = view(camera);
-    const [mx, my] = marker;
-    return Math.hypot(px - v.sx(mx, my), py - v.sy(mx, my, result.viewpoint.z)) <= grab;
+    const [mx, my] = marker.at;
+    return Math.hypot(px - v.sx(mx, my), py - v.sy(mx, my, marker.z)) <= grab;
   };
 
   /**
@@ -310,11 +337,18 @@ export default function PlanMap({
    * nearest point of the block's outline. That is also what keeps a courtyard
    * reachable: the inside of a C is as much a part of the outline as the front.
    */
-  const snap = (px: number, py: number): [number, number] => {
-    const [gx, gy] = view(camera).ground(px, py);
-    if (!host) return [gx, gy];
-    const wall = nearestFacade(gx, gy, host.ring);
-    return [wall.x, wall.y];
+  const snap = (px: number, py: number): Spot =>
+    host && result.host
+      ? spotAt(view(camera), host.ring, px, py, maxFloor, (k) => eyeHeight(result, k))
+      : { at: view(camera).ground(px, py), floor: marker.floor, miss: Infinity };
+
+  /** Was that press on the block? Asked in pixels, so zoom does not change it. */
+  const onBlock = (spot: Spot) => spot.miss * view(camera).kx < PLACE_REACH_PX;
+
+  /** Commit a placement: the page asks the engine, the marker lets go. */
+  const place = (spot: Spot) => {
+    onPlaceWindow(makeProjection(result.origin).toLatLng(spot.at[0], spot.at[1]), spot.floor);
+    setPlacing(null);
   };
 
   /**
@@ -327,15 +361,21 @@ export default function PlanMap({
    */
   const nudge = (dir: 1 | -1) => {
     if (!host || busy) return;
-    const [mx, my] = marker;
+    const [mx, my] = marker.at;
     const forward = walkOutline(mx, my, host.ring, NUDGE_M);
     const back = walkOutline(mx, my, host.ring, -NUDGE_M);
     const v = view(camera);
     const rightwards = v.sx(forward[0], forward[1]) >= v.sx(back[0], back[1]);
     const next = rightwards === dir > 0 ? forward : back;
-    setPlacing(next);
-    onPlaceWindow(makeProjection(result.origin).toLatLng(next[0], next[1]));
-    setPlacing(null);
+    place({ at: next, floor: marker.floor, miss: 0 });
+  };
+
+  /** Up and down the block, one storey at a time, without leaving the drawing. */
+  const step = (dir: 1 | -1) => {
+    if (busy) return;
+    const next = Math.min(maxFloor, Math.max(1, marker.floor + dir));
+    if (next === marker.floor) return;
+    place({ at: marker.at, floor: next, miss: 0 });
   };
 
   const swivel = (by: number) => setAzimuth((a) => a + by);
@@ -354,10 +394,13 @@ export default function PlanMap({
             e.currentTarget.setPointerCapture(e.pointerId);
             setHover(null);
             const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
-            // Either the marker is being taken hold of, or the view is being
-            // swivelled. The marker is the more specific, so it is asked first.
-            if (!busy && onMarker(px, py, e.currentTarget)) {
-              setPlacing(snap(px, py));
+            // Either the window is being put somewhere, or the view is being
+            // swivelled. Pressing the block itself is putting a window on it —
+            // that is what the drawing is for — and the marker answers first
+            // because it is the more specific target when the two overlap.
+            const spot = snap(px, py);
+            if (!busy && (onMarker(px, py, e.currentTarget) || onBlock(spot))) {
+              setPlacing(spot);
               return;
             }
             drag.current = { x: e.clientX, y: e.clientY, azimuth, pitch };
@@ -373,9 +416,13 @@ export default function PlanMap({
               // Nothing is being dragged, so the cursor's job is to say what could be.
               const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
               const grabbable = !busy && onMarker(px, py, e.currentTarget);
-              e.currentTarget.style.cursor = grabbable ? "grab" : "";
               // The marker is the more specific target, so it keeps the pointer.
               const id = grabbable ? null : blockAt(px, py);
+              e.currentTarget.style.cursor = grabbable
+                ? "grab"
+                : !busy && onBlock(snap(px, py))
+                  ? "crosshair"
+                  : "";
               const b = id ? result.buildings.find((x) => x.id === id) : null;
               const box = e.currentTarget.getBoundingClientRect();
               const px2 = e.clientX - box.left;
@@ -403,8 +450,7 @@ export default function PlanMap({
           }}
           onPointerUp={() => {
             if (placing) {
-              onPlaceWindow(makeProjection(result.origin).toLatLng(placing[0], placing[1]));
-              setPlacing(null);
+              place(placing);
               return;
             }
             drag.current = null;
@@ -496,6 +542,14 @@ export default function PlanMap({
             aria-label={`Move the window ${NUDGE_M} metres right along the block`} title="Move right along the wall">
             <Glyph d="M5 9h8M9.5 5.5 13 9l-3.5 3.5" />
           </button>
+          <button onClick={() => step(1)} disabled={busy || marker.floor >= maxFloor}
+            aria-label="Up one storey" title="Up one storey">
+            <Glyph d="M9 14V4M4.5 8.5 9 4l4.5 4.5" />
+          </button>
+          <button onClick={() => step(-1)} disabled={busy || marker.floor <= 1}
+            aria-label="Down one storey" title="Down one storey">
+            <Glyph d="M9 4v10M4.5 9.5 9 14l4.5-4.5" />
+          </button>
           {!host && <small>no block here to move along</small>}
           <button className="as-text" onClick={() => setNudging(false)}>Hide</button>
         </div>
@@ -561,6 +615,103 @@ export interface Camera {
 
 export const HOME: Camera = { azimuth: AZIMUTH_HOME, pitch: PITCH_HOME, zoom: 1, pivot: [0, 0] };
 
+/** A placement in the making: where on the outline, and how far up it. */
+export interface Spot {
+  at: [number, number];
+  floor: number;
+  /** How far the press missed the block by, in metres. Infinity with no block. */
+  miss: number;
+}
+
+/** A placement being drawn, with the height that storey puts the eye at. */
+interface Marker {
+  at: [number, number];
+  floor: number;
+  z: number;
+}
+
+/**
+ * Where on a block a press landed — along the wall, and how far up it.
+ *
+ * The projection never divides by depth, so height only ever slides a point
+ * straight up the canvas: whatever the reader pressed, the ground under it is
+ * further away the higher up the block it was. Read backwards, the pixel is not
+ * one place on the ground but a line of them, running away from the viewer at a
+ * fixed metre of height per metre of ground — the view ray, flattened.
+ *
+ * So the press is that ray against the footprint, and what it met is the
+ * crossing nearest the viewer: a wall is opaque, and everything the ray reaches
+ * afterwards is inside the building or behind it. Height follows from how far
+ * along the ray that crossing sits, and the storey from the height.
+ *
+ * Solved rather than searched. A scan storey by storey was close enough looking
+ * square at a wall and a floor out at an angle to it, because consecutive
+ * storeys land about four metres apart along the ground and an oblique wall
+ * comes that near to the wrong one.
+ */
+export function spotAt(
+  v: View,
+  ring: [number, number][],
+  px: number,
+  py: number,
+  maxFloor: number,
+  eyeOf: (floor: number) => number,
+): Spot {
+  const [gx, gy] = v.ground(px, py);
+  const [ax, ay] = v.away;
+
+  // How far along the ray the pressed pixel meets the outline, measured from
+  // the ground point under it. Only the crossing nearest the viewer counts.
+  let far = -Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [px0, py0] = ring[j];
+    const ex = ring[i][0] - px0;
+    const ey = ring[i][1] - py0;
+    const det = ex * ay - ey * ax;
+    if (Math.abs(det) < 1e-9) continue; // the wall runs along the ray
+    const rx = gx - px0;
+    const ry = gy - py0;
+    const along = (rx * ay - ry * ax) / det; // how far down that wall
+    const t = (ex * ry - ey * rx) / det; // how far up the ray
+    if (along >= 0 && along <= 1 && t > far) far = t;
+  }
+
+  if (far === -Infinity) {
+    // Nothing was hit, so the only question left is by how much. The closest the
+    // ray passes to any corner is near enough: this only decides whether the
+    // press was a press on the block, not where on it.
+    let miss = Infinity;
+    for (const [cx, cy] of ring) {
+      miss = Math.min(miss, Math.abs((cx - gx) * ay - (cy - gy) * ax));
+    }
+    const wall = nearestFacade(gx, gy, ring);
+    return { at: [wall.x, wall.y], floor: 1, miss };
+  }
+
+  const at: [number, number] = [gx - far * ax, gy - far * ay];
+  const z = far * v.rise;
+  // Above the roof the ray met the top of the block, which is the top storey.
+  let floor = 1;
+  for (let k = 2; k <= maxFloor; k++) {
+    if (Math.abs(eyeOf(k) - z) < Math.abs(eyeOf(floor) - z)) floor = k;
+  }
+  const wall = nearestFacade(at[0], at[1], ring);
+  return { at: [wall.x, wall.y], floor, miss: 0 };
+}
+
+/**
+ * How high the eye sits on a given storey, by the same rule the analysis uses.
+ *
+ * The block's measured height over the storeys it holds, not a nominal three
+ * metres — a marker drawn at a nominal storey and an answer worked out at a real
+ * one are two different flats by the twentieth floor. With no block under the
+ * pin there is no storey to be on, so the last answer's height stands.
+ */
+function eyeHeight(result: AnalysisResult, floor: number) {
+  const host = result.host;
+  return host ? (floor - 1) * host.floorHeight + host.eyeAboveFloor : result.viewpoint.z;
+}
+
 const clampPitch = (p: number) => Math.max(PITCH_MIN, Math.min(PITCH_MAX, p));
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
@@ -578,7 +729,7 @@ function lines(e: WheelEvent) {
 }
 
 /** The screen transform: world metres (east, north, up) to canvas pixels. */
-function view(camera: Camera) {
+export function view(camera: Camera) {
   // The ground covers a diamond 2R across each diagonal; fit that, then come in
   // slightly, since the far corners hold nothing worth seeing.
   const scale =
@@ -663,7 +814,7 @@ function draw(
   timeMinutes: number,
   day: { month: number; day: number },
   camera: Camera,
-  marker: [number, number],
+  marker: Marker,
   hits?: { id: string; path: Path2D }[],
   basemap = false,
   onTile: () => void = () => {},
@@ -715,8 +866,15 @@ function draw(
   const ordered = [...inFrame].sort(
     (a, b) => v.depth(...centroid(b.ring)) - v.depth(...centroid(a.ring)),
   );
+  // Only the block being reported on is ruled into storeys. Every other block
+  // in the frame is context, and hatching the whole neighbourhood would bury
+  // the one outline the reader is choosing a flat on.
+  const storeys = result.host
+    ? { height: result.host.floorHeight, chosen: marker.floor }
+    : null;
   for (const b of ordered) {
-    const path = drawBlock(ctx, v, c, b, b.id === result.viewpoint.hostId, blockerIds.has(b.id));
+    const isHost = b.id === result.viewpoint.hostId;
+    const path = drawBlock(ctx, v, c, b, isHost, blockerIds.has(b.id), isHost ? storeys : null);
     hits?.push({ id: b.id, path });
   }
 
@@ -1003,6 +1161,8 @@ function drawBlock(
   b: Building,
   isHost: boolean,
   isBlocker: boolean,
+  /** The storeys to rule across this block's walls, if it is the chosen one. */
+  storeys: { height: number; chosen: number } | null,
 ): Path2D {
   const ring = b.ring;
   const h = b.height;
@@ -1055,6 +1215,10 @@ function drawBlock(
   walls.sort((p, q) => q.depth - p.depth);
   for (const wall of walls) {
     fillFace(ctx, wall.pts, wall.lit ? tone.lit : tone.dark);
+    // Ruled wall by wall rather than in one pass at the end, so a storey line on
+    // the far side of the block stays behind the near side, like the wall it
+    // belongs to.
+    if (storeys) drawStoreys(ctx, v, c, wall.pts, h, storeys);
   }
 
   const roof = ring.map(([x, y]) => [v.sx(x, y), v.sy(x, y, h)] as [number, number]);
@@ -1086,6 +1250,55 @@ function drawBlock(
   for (const wall of walls) addFace(hit, wall.pts);
   addFace(hit, roof);
   return hit;
+}
+
+/**
+ * Storeys ruled across one wall, and the chosen one picked out.
+ *
+ * Nothing here needs world coordinates. The projection never divides by depth,
+ * so height moves a point straight up the canvas and nothing else: a wall's
+ * ground corners lifted by `z * scale` are its corners at that height, exactly.
+ *
+ * The band goes right round the block rather than onto one stack of windows,
+ * because which stack a flat is in is not something the footprint knows. It says
+ * the storey, which is what was chosen, and does not imply a unit that was not.
+ */
+function drawStoreys(
+  ctx: CanvasRenderingContext2D,
+  v: View,
+  c: Palette,
+  pts: [number, number][],
+  height: number,
+  storeys: { height: number; chosen: number },
+) {
+  const [a, b] = pts;
+  if (Math.hypot(b[0] - a[0], b[1] - a[1]) < STOREY_MIN_PX) return;
+  const up = (p: [number, number], z: number): [number, number] => [p[0], p[1] - z * v.scale];
+
+  const top = storeys.chosen * storeys.height;
+  if (top - storeys.height < height) {
+    const lo = (storeys.chosen - 1) * storeys.height;
+    const hi = Math.min(top, height);
+    ctx.globalAlpha = 0.5;
+    fillFace(ctx, [up(a, lo), up(b, lo), up(b, hi), up(a, hi)], c.ray);
+    ctx.globalAlpha = 1;
+  }
+
+  // Zoomed out, the storeys are closer together than the lines drawing them, so
+  // ruling them would only turn the wall a flat shade of its own outline.
+  if (storeys.height * v.scale < STOREY_LEGIBLE_PX) return;
+  ctx.strokeStyle = c.hostLabel;
+  ctx.globalAlpha = 0.18;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let z = storeys.height; z < height; z += storeys.height) {
+    const [ax, ay] = up(a, z);
+    const [bx, by] = up(b, z);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
 }
 
 /**
@@ -1418,13 +1631,13 @@ function drawWindow(
   c: Palette,
   result: AnalysisResult,
   sun: { azimuth: number; elevation: number },
-  marker: [number, number],
+  marker: Marker,
   hiddenAt: (x: number, y: number, z: number) => boolean,
 ) {
   // The marker leads and the analysis follows, so it draws where it has been
   // put rather than where the last answer came back from.
-  const [x, y] = marker;
-  const { z } = result.viewpoint;
+  const [x, y] = marker.at;
+  const { z } = marker;
   const px = v.sx(x, y);
   const py = v.sy(x, y, z);
 

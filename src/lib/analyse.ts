@@ -161,6 +161,8 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
           heightSource: host.heightSource,
           matchedBy: match!.matchedBy,
           distanceFromPin: Math.round(match!.distance),
+          floorHeight: floorHeightOf(host),
+          eyeAboveFloor: EYE_ABOVE_FLOOR_M,
           faces: faces.map((f) => ({ facing: f.facing, length: f.length })),
         }
       : null,
@@ -267,6 +269,18 @@ function rank(b: Building) {
   return area * residential * known;
 }
 
+/**
+ * How tall one storey of this block is.
+ *
+ * A measured roof divided by the storeys it holds, rather than a nominal
+ * height: the 1.4 covers the void deck, which is taller than a flat, and the
+ * plant room on the roof. Only when the storey count is unknown does the
+ * nominal figure for this kind of building stand in.
+ */
+function floorHeightOf(host: Building) {
+  return host.levels ? host.height / (host.levels + 1.4) : FLOOR_HEIGHT_M[host.kind];
+}
+
 function placeViewpoint(
   input: AnalyseInput,
   host: Building | null,
@@ -291,8 +305,7 @@ function placeViewpoint(
   // A window sits on one side of a block. Either the caller picked a side, or
   // we work out which side a unit here is most likely to be on.
   const nearest = nearestFacade(0, 0, host.ring);
-  const floorHeight = host.levels ? host.height / (host.levels + 1.4) : FLOOR_HEIGHT_M[host.kind];
-  const z = (floor - 1) * floorHeight + EYE_ABOVE_FLOOR_M;
+  const z = (floor - 1) * floorHeightOf(host) + EYE_ABOVE_FLOOR_M;
   // A window placed by hand beats any rule about sides, so it is checked first.
   const placed = windowAt ? nearestFacade(windowAt[0], windowAt[1], host.ring) : null;
   const index =

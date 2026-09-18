@@ -12,6 +12,7 @@
     "check-bto": "tsx scripts/check-bto.ts",
     "check-privacy": "tsx scripts/check-privacy.ts",
     "check-limit": "tsx scripts/check-limit.ts",
+    "check-storey": "tsx scripts/check-storey.ts",
     "analyse": "tsx scripts/analyse.ts",
     "calibrate": "tsx scripts/calibrate.ts",
     "build-hdb": "tsx scripts/build-hdb.ts",

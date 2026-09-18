@@ -457,7 +457,15 @@ export default function Home() {
               <>
                 <PlanMap result={result} timeMinutes={timeMinutes} day={season}
                   windowAt={windowAt} busy={busy}
-                  onPlaceWindow={(p) => { setWindowAt(p); setFace(undefined); }} />
+                  floor={activeFloor} maxFloor={maxFloor}
+                  onPlaceWindow={(p, storey) => {
+                    setWindowAt(p);
+                    setFace(undefined);
+                    // One press on the block is one question: the wall it landed
+                    // on and the storey it landed at go in together, so the slider
+                    // follows the drawing instead of contradicting it.
+                    changeFloor(storey);
+                  }} />
                 <div className="scrub">
                   <span className="time">{clockLabel(timeMinutes)}</span>
                   <input id="time" type="range" min={7 * 60} max={19 * 60} step={10}
@@ -475,7 +483,7 @@ export default function Home() {
                   {busy ? (
                     <span className="working">Working out the answer for this window…</span>
                   ) : (
-                    <>Drag the orange dot to your unit, or walk it along the wall with the Window buttons. The blue fan shows the view from that window, and the red line is the sun. Dashed rooflines are estimated heights.</>
+                    <>Press your block where your unit is — along the wall and up the storeys — or walk the orange dot there with the Window buttons. The blue fan shows the view from that window, and the red line is the sun. Dashed rooflines are estimated heights.</>
                   )}
                 </p>
                 {result.ground.length > 0 && (

@@ -153,6 +153,14 @@ export interface AnalysisResult {
     matchedBy: "postal" | "address" | "pin-inside" | "nearest";
     /** How far the pin was from it, metres. */
     distanceFromPin: number;
+    /**
+     * The storey height this block is measured at, metres, and how high above
+     * the slab the eye sits. Sent rather than assumed, because the drawing marks
+     * storeys on the block and a floor drawn at a nominal 3 m would be a
+     * different storey from the one the answer was worked out at.
+     */
+    floorHeight: number;
+    eyeAboveFloor: number;
     /** The sides of the block, longest first — what a window can actually face. */
     faces: { facing: number; length: number }[];
   } | null;
