@@ -62,6 +62,7 @@ export default function Home() {
 
   // The launches, fetched once. They are a short fixed list, not a search.
   const [launches, setLaunches] = useState<Launch[]>([]);
+  const [launchesOpen, setLaunchesOpen] = useState(false);
   useEffect(() => {
     fetch("/api/launches")
       .then((r) => r.json())
@@ -243,8 +244,57 @@ export default function Home() {
 
   return (
     <main className="page">
-      <div className="masthead">
+      {/* Over the page, not in it. A list of launches is a way in, and a way in
+          should not take a column off the report it leads to — least of all on
+          the screen where the report is already the tighter of the two. */}
+      <div className="masthead" onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setLaunchesOpen(false);
+      }}>
         <h1>Homing</h1>
+        {launches.length > 0 && (
+          <button
+            type="button"
+            className="launches-toggle"
+            aria-expanded={launchesOpen}
+            aria-controls="launches-panel"
+            onClick={() => setLaunchesOpen((v) => !v)}
+            onKeyDown={(e) => { if (e.key === "Escape") setLaunchesOpen(false); }}
+          >
+            New launches<small>{launches.length}</small>
+          </button>
+        )}
+        {launchesOpen && (
+          // Grouped by sales exercise, because that is how a buyer holds them:
+          // one application window, and the projects in it are the options
+          // inside a single decision.
+          <div
+            className="launches"
+            id="launches-panel"
+            role="group"
+            aria-label="New BTO launches"
+            onKeyDown={(e) => { if (e.key === "Escape") setLaunchesOpen(false); }}
+          >
+            {groupByLaunch(launches).map(([exercise, sites]) => (
+              <div className="launch-group" key={exercise}>
+                <h3>{monthName(exercise)}</h3>
+                {sites.map((site) => (
+                  <button
+                    key={site.name}
+                    type="button"
+                    aria-pressed={result?.bto?.name === site.name}
+                    onClick={() => { chooseLaunch(site); setLaunchesOpen(false); }}
+                  >
+                    <b>{site.name}</b>
+                    <span>
+                      {site.town} · {site.storeysLow ? `${site.storeysLow}–${site.storeys}` : site.storeys} storeys
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+            <p className="hint">Sold, not yet built. Keys from {earliestKeys(launches)}.</p>
+          </div>
+        )}
       </div>
       <p className="lede">
         How much sun a house gets, and what blocks its view.
@@ -300,34 +350,6 @@ export default function Home() {
       </div>
 
       <div className="summary-grid">
-        {/* Grouped by sales exercise, because that is how a buyer holds them:
-            a launch is a single decision with one application window, and the
-            seven projects in it are the options inside that decision. */}
-        {launches.length > 0 && (
-          <aside className="launches" aria-label="New BTO launches">
-            <h2>New launches</h2>
-            {groupByLaunch(launches).map(([exercise, sites]) => (
-              <div className="launch-group" key={exercise}>
-                <h3>{monthName(exercise)}</h3>
-                {sites.map((site) => (
-                  <button
-                    key={site.name}
-                    type="button"
-                    aria-pressed={result?.bto?.name === site.name}
-                    onClick={() => chooseLaunch(site)}
-                  >
-                    <b>{site.name}</b>
-                    <span>
-                      {site.town} · {site.storeysLow ? `${site.storeysLow}–${site.storeys}` : site.storeys} storeys
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ))}
-            <p className="hint">Sold, not yet built. Keys from {earliestKeys(launches)}.</p>
-          </aside>
-        )}
-
         <div className="summary-stack">
           <section className="card unit-card">
             <h2>The unit</h2>
