@@ -25,6 +25,7 @@ const WEIGHTS = { daylight: 0.35, afternoonHeat: 0.3, openness: 0.35 };
  * is worth a sentence even when the rest of the outlook is ordinary.
  */
 const NOTABLE_PROTECTED_DEG = 18;
+const NOTABLE_DURABLE_FOREGROUND_DEG = 18;
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const pct = (v: number) => Math.round(clamp01(v) * 100);
@@ -118,7 +119,12 @@ function buildNotes(
 
   // What the view is worth in ten years, which is a different question from
   // what it is worth now and the one a buyer cannot look up anywhere.
-  if (outlook && outlook.protectedDegrees >= NOTABLE_PROTECTED_DEG) {
+  const water = outlook?.durableForegrounds.find((foreground) => foreground.label === "Water");
+  if (water && water.arcDegrees >= NOTABLE_DURABLE_FOREGROUND_DEG) {
+    notes.push(
+      `Water starts about ${water.distance} m out across a meaningful part of this outlook. The foreground will stay open, though buildings on the far shore could still change the skyline.`,
+    );
+  } else if (outlook && outlook.protectedDegrees >= NOTABLE_PROTECTED_DEG) {
     const widest = outlook.protectors[0];
     notes.push(
       `${outlook.protectedDegrees}° of this outlook is over land the Master Plan will not let a building rise on${widest ? ` — ${widest.label}, ${widest.distance} m out` : ""}. That part of the view is not going to be built out.`,

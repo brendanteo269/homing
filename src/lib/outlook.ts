@@ -21,12 +21,20 @@ import type { Viewpoint } from "./types";
 export interface OutlookMetrics {
   /** Degrees of the window's 180 that look over ground which cannot rise into view. */
   protectedDegrees: number;
+  /**
+   * Visible directions where water starts before any land that could grow into
+   * the view. This preserves the foreground, but not necessarily the distant
+   * skyline on the far shore.
+   */
+  durableForegroundDegrees: number;
   /** Degrees where the plan publishes a ceiling at all. */
   knownDegrees: number;
   /** How far out the question was asked, metres. */
   reachM: number;
   /** What is doing the protecting, widest first. */
   protectors: { label: string; arcDegrees: number; distance: number; bearing: number }[];
+  /** Durable foregrounds, currently water only, widest first. */
+  durableForegrounds: { label: string; arcDegrees: number; distance: number; bearing: number }[];
   /** What the land in front is zoned for, nearest first. */
   zones: { use: string; gpr: string; arcDegrees: number; distance: number; bearing: number }[];
 }
@@ -67,6 +75,17 @@ const OPEN_LAND_CEILING_M: Record<string, number> = {
   AGRICULTURE: 12,
 };
 
+/*
+ * Water is different from a low height ceiling. A park can be redesigned and
+ * a road can be bridged, but a waterbody is a durable open foreground. It is
+ * still not credited as a permanently open skyline, because a building on the
+ * far shore can change what sits above the water.
+ */
+const DURABLE_FOREGROUND: Record<string, string> = {
+  WATERBODY: "Water",
+  "BEACH AREA": "Water",
+};
+
 /** A grid over the local metres, so a ray does not test every polygon it passes. */
 const GRID_M = 60;
 
@@ -93,8 +112,10 @@ export function computeOutlook(
   const onHomeLand = (px: number, py: number) => home.some((zn) => pointInPolygon(px, py, zn.ring));
 
   let protectedDegrees = 0;
+  let durableForegroundDegrees = 0;
   let knownDegrees = 0;
   const protectors = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
+  const durableForegrounds = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
   const zones = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
 
   for (let a = -90; a <= 90; a++) {
@@ -105,6 +126,7 @@ export function computeOutlook(
     let known = false;
     let breached = false;
     let credit: { label: string; distance: number } | null = null;
+    let durableForeground: { label: string; distance: number } | null = null;
     let firstZone: { use: string; gpr: string; distance: number } | null = null;
 
     for (let d = STEP_M; d <= REACH_M; d += STEP_M) {
@@ -113,6 +135,10 @@ export function computeOutlook(
       if (onHomeLand(px, py)) continue;
 
       const cell = grid.get(cellKey(px, py));
+      if (!durableForeground && cell) {
+        const water = durableAt(px, py, cell);
+        if (water) durableForeground = { label: water, distance: d };
+      }
       if (!firstZone && cell) {
         // Roads count for protection — nothing can be built on one — but they
         // are useless in a list of what the outlook faces. Nearly every window
@@ -152,6 +178,26 @@ export function computeOutlook(
 
     if (!known) continue;
     knownDegrees++;
+
+    // A waterbody reached before the first uncertain or buildable parcel is a
+    // durable part of the foreground. Existing buildings can still hide it,
+    // in which case it should not be credited to this particular window.
+    if (durableForeground && builtHorizonAt(azimuth) < CLEAR_DEG) {
+      durableForegroundDegrees++;
+      const seen = durableForegrounds.get(durableForeground.label);
+      if (seen) {
+        seen.arcDegrees++;
+        if (durableForeground.distance < seen.distance) seen.bearing = azimuth;
+        seen.distance = Math.min(seen.distance, durableForeground.distance);
+      } else {
+        durableForegrounds.set(durableForeground.label, {
+          arcDegrees: 1,
+          distance: durableForeground.distance,
+          bearing: azimuth,
+        });
+      }
+    }
+
     if (breached) continue;
     // Something already standing in the way makes the question moot: that
     // direction is closed, and whether it could close further is not what
@@ -171,9 +217,13 @@ export function computeOutlook(
 
   return {
     protectedDegrees,
+    durableForegroundDegrees,
     knownDegrees,
     reachM: REACH_M,
     protectors: [...protectors]
+      .map(([label, v]) => ({ label, ...v, distance: Math.round(v.distance) }))
+      .sort((p, q) => q.arcDegrees - p.arcDegrees),
+    durableForegrounds: [...durableForegrounds]
       .map(([label, v]) => ({ label, ...v, distance: Math.round(v.distance) }))
       .sort((p, q) => q.arcDegrees - p.arcDegrees),
     zones: [...zones]
@@ -206,6 +256,14 @@ function ceilingAt(x: number, y: number, cell: Cell): { height: number; what: st
     if (open !== undefined && pointInPolygon(x, y, zn.ring)) take(open, zn.use.toLowerCase());
   }
   return best;
+}
+
+function durableAt(x: number, y: number, cell: Cell) {
+  for (const zone of cell.zones) {
+    const label = DURABLE_FOREGROUND[zone.use];
+    if (label && pointInPolygon(x, y, zone.ring)) return label;
+  }
+  return null;
 }
 
 const cellKey = (x: number, y: number) => `${Math.floor(x / GRID_M)}:${Math.floor(y / GRID_M)}`;

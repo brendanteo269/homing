@@ -375,15 +375,12 @@ table { width: 100%; border-collapse: collapse; font-size: 15px; }
 
 /* ---------- outlook and nearby industry ---------- */
 .outlook-story { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; }
-.outlook-number { font-size: 64px; font-weight: 300; letter-spacing: -0.055em; line-height: 0.85; color: var(--good); font-variant-numeric: tabular-nums; }
+.outlook-status { font-size: 22px; font-weight: 650; letter-spacing: -0.025em; color: var(--good); }
 .outlook-story p { color: var(--muted); max-width: 47ch; }
-.outlook-bar { height: 12px; margin-top: 22px; background: var(--line); border-radius: 2px; overflow: hidden; }
-.outlook-bar span { display: block; height: 100%; min-width: 2px; background: var(--good); }
-.outlook-key { display: flex; justify-content: space-between; gap: 12px; color: var(--faint); font-size: 11px; margin-top: 7px; }
-.outlook-key i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; background: var(--good); vertical-align: -1px; }
 .outlook-details { margin-top: 18px; }
 .outlook-details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .outlook-details[open] summary { margin-bottom: 8px; }
+.outlook-explainer { margin: 0 0 10px; }
 .noise-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0 22px; }
 .noise-group { display: grid; gap: 2px; padding: 12px 0; border-top: 1px solid var(--line); }
 .noise-group strong { font-size: 14px; font-weight: 550; }

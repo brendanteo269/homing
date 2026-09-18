@@ -391,7 +391,7 @@ export default function Home() {
             </section>
           )}
 
-          {result.outlook && result.outlook.knownDegrees > 0 && <OutlookStory result={result} />}
+          {result.outlook && (result.outlook.knownDegrees > 0 || result.outlook.durableForegroundDegrees > 0) && <OutlookStory result={result} />}
 
           {result.noise && (
             <section className="card">
@@ -464,6 +464,7 @@ function Datum({ what, where, amount, note }: { what: string; where: string; amo
 /** A visual first answer to the question of whether an outlook is permanent. */
 function OutlookStory({ result }: { result: AnalysisResult }) {
   const outlook = result.outlook!;
+  const water = outlook.durableForegrounds.find((foreground) => foreground.label === "Water");
   const protectedPct = Math.round((outlook.protectedDegrees / 181) * 100);
   const shown = outlook.zones
     .filter((z) => !outlook.protectors.some((p) => sameThing(p.label, z.use)))
@@ -473,15 +474,20 @@ function OutlookStory({ result }: { result: AnalysisResult }) {
     <section className="card outlook-card">
       <h2>Will the view last?</h2>
       <div className="outlook-story">
-        <div className="outlook-number">{protectedPct}%</div>
-        <p>of this view is over land where a building cannot rise. The rest has no reliable height limit to quote.</p>
+        <div className="outlook-status">{water ? "Water ahead" : "No lasting foreground"}</div>
+        <p>
+          {water
+            ? `Water begins about ${water.distance} m away. It keeps this part of the foreground open, although buildings on the far shore could still change the skyline.`
+            : "There is no water or other durable open foreground in this view. Nearby land does not have enough published height data to guarantee the skyline."}
+        </p>
       </div>
-      <div className="outlook-bar" role="img" aria-label={`${protectedPct}% of the view is permanently protected`}>
-        <span style={{ width: `${protectedPct}%` }} />
-      </div>
-      <div className="outlook-key"><span><i />protected for good</span><span>could change</span></div>
       <details className="outlook-details">
-        <summary>See what is in the view</summary>
+        <summary>See the planning detail</summary>
+        <p className="hint outlook-explainer">
+          {protectedPct > 0
+            ? `${protectedPct}% of the full forward view has a documented low-height corridor all the way to 200 m.`
+            : "No part of the full 200 m skyline corridor has a documented low-height limit."}
+        </p>
         {outlook.protectors.map((p) => (
           <Datum
             key={p.label}
