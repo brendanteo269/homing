@@ -626,7 +626,8 @@ function palette() {
     ink: "#3d4127",
     faint: "#5f6443",
     muted: "#55593a",
-    mono: 'ui-monospace, Menlo, monospace',
+    // The canvas cannot inherit a font, so it is told the family by name.
+    face: 'Manrope, ui-sans-serif, system-ui, sans-serif',
   };
   if (typeof window === "undefined") return fallback;
   const s = getComputedStyle(document.documentElement);
@@ -659,7 +660,7 @@ function palette() {
     ink: get("--ink", fallback.ink),
     faint: get("--faint", fallback.faint),
     muted: get("--muted", fallback.muted),
-    mono: get("--mono", fallback.mono),
+    face: get("--sans", fallback.face),
   };
 }
 
@@ -824,7 +825,7 @@ function drawBlock(
   if ((isHost || isBlocker) && b.blockNo && polygonSpan(roof) > 26) {
     const [gx, gy] = centroid(ring);
     ctx.fillStyle = isHost ? c.hostLabel : c.muted;
-    ctx.font = `${isHost ? "600" : "500"} 11px ${c.mono}`;
+    ctx.font = `${isHost ? "600" : "500"} 11px ${c.face}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(b.blockNo, v.sx(gx, gy), v.sy(gx, gy, h));
@@ -1251,7 +1252,7 @@ function drawFurniture(
   // The clock is read out beside the scrubber now, so this says the one thing
   // the drawing cannot: where the sun is standing while it casts these shadows.
   ctx.fillStyle = c.muted;
-  ctx.font = `11px ${c.mono}`;
+  ctx.font = `11px ${c.face}`;
   ctx.fillText(
     sun.elevation > 0
       ? `Sun ${Math.round(sun.elevation)}° up, in the ${compassName(sun.azimuth)}`
@@ -1277,7 +1278,7 @@ function drawFurniture(
   ctx.lineTo(bx + barLen, by + 3.5);
   ctx.stroke();
   ctx.fillStyle = c.faint;
-  ctx.font = `10px ${c.mono}`;
+  ctx.font = `10px ${c.face}`;
   ctx.fillText(`${barM} M`, bx + barLen + 8, by + 3.5);
 
   // North, pointing the way north actually points in this projection.
@@ -1295,7 +1296,7 @@ function drawFurniture(
   ctx.closePath();
   ctx.fillStyle = c.muted;
   ctx.fill();
-  ctx.font = `600 10px ${c.mono}`;
+  ctx.font = `600 10px ${c.face}`;
   ctx.textAlign = "center";
   ctx.fillText("N", ax + ux * 1.9, ay + uy * 1.9 + 3);
 }

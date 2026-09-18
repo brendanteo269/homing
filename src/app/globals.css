@@ -77,7 +77,6 @@
   --plan-sun: #d8321e;
 
   --r: 4px;
-  --mono: var(--font-mono), ui-monospace, Menlo, monospace;
   --sans: var(--font-sans), ui-sans-serif, -apple-system, system-ui, sans-serif;
 }
 
@@ -94,6 +93,10 @@ html, body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+/* Form controls do not inherit a font — they take the browser's, which here
+   meant two range sliders quietly sitting in Arial. Nothing in this app is set
+   in anything but Manrope, and a control is not an exception to that. */
+button, input, select, textarea { font-family: inherit; }
 
 h1, h2, h3 { margin: 0; font-weight: 550; letter-spacing: -0.012em; }
 p { margin: 0; }
@@ -111,7 +114,7 @@ button { font: inherit; color: inherit; }
 .masthead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
 .masthead h1 { font-size: 17px; letter-spacing: 0.01em; font-weight: 600; }
 .masthead .tag {
-  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  font-variant-numeric: tabular-nums; font-size: 10px; text-transform: uppercase;
   letter-spacing: 0.1em; color: var(--faint);
   border: 1px solid var(--line-bright); border-radius: 2px; padding: 1px 6px;
 }
@@ -156,7 +159,7 @@ button { font: inherit; color: inherit; }
 .go-home:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
 
 .postal {
-  font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums; font-size: 11px; letter-spacing: 0.04em;
   color: var(--faint); margin-right: 8px;
 }
 
@@ -207,9 +210,9 @@ button { font: inherit; color: inherit; }
   display: flex; justify-content: space-between; align-items: baseline;
   font-size: 12px; color: var(--muted); margin-bottom: 8px;
 }
-/* Mono is for the readout on the right, not for a label that happens to be the
-   only span in its row — a question set in monospace reads like code. */
-.control label span + span { color: var(--ink); font-family: var(--mono); font-size: 12px; }
+/* Figures line up for the readout on the right, not for a label that happens
+   to be the only span in its row. */
+.control label span + span { color: var(--ink); font-variant-numeric: tabular-nums; font-size: 12px; }
 
 /* The track stays neutral and only the handle takes the accent — a full
    olive bar across a panel outshouts the drawing it is there to scrub. */
@@ -238,7 +241,7 @@ input[type="range"]::-moz-range-thumb {
   flex: 1 1 auto; min-width: 38px; padding: 5px 0;
   background: transparent; color: var(--muted);
   border: 1px solid var(--line-bright); border-radius: 3px;
-  cursor: pointer; font-size: 11px; font-family: var(--mono);
+  cursor: pointer; font-size: 11px; font-variant-numeric: tabular-nums;
   transition: color 140ms ease, border-color 140ms ease;
 }
 .compass-row button:hover { color: var(--ink); border-color: var(--faint); }
@@ -258,7 +261,7 @@ input[type="range"]::-moz-range-thumb {
 }
 .sides button:hover { border-color: var(--faint); }
 .sides button b { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
-.sides button span { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.sides button span { font-variant-numeric: tabular-nums; font-size: 11px; color: var(--faint); }
 .sides button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 /* Was 72% of --on-ink over --ink: 3.2:1 at 10.5px, under AA. A solid tint of
    the same paper reads as quieter without dropping below 4.5:1. */
@@ -276,7 +279,7 @@ input[type="range"]::-moz-range-thumb {
 .bar + .bar { margin-top: 8px; }
 .bar .row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
 .bar .row span { color: var(--muted); }
-.bar .row b { font-weight: 500; font-family: var(--mono); font-size: 12px; }
+.bar .row b { font-weight: 500; font-variant-numeric: tabular-nums; font-size: 12px; }
 .bar .track { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
 .bar .fill { height: 100%; transition: width 220ms ease; }
 
@@ -334,7 +337,9 @@ canvas { display: block; width: 100%; height: auto; }
 }
 .scrub .time {
   flex: 0 0 auto; min-width: 56px;
-  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  font-size: 12px; color: var(--ink);
+  /* The clock is read while it is being scrubbed, so its digits must not
+     jostle each other as the hour rolls over. */
   font-variant-numeric: tabular-nums;
 }
 .scrub input[type="range"] { flex: 1 1 auto; }
@@ -359,14 +364,14 @@ canvas { display: block; width: 100%; height: auto; }
 .heatmap-heading, .heatmap-row {
   display: grid; grid-template-columns: 42px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: center;
 }
-.heatmap-heading { font-family: var(--mono); color: var(--faint); font-size: 11px; margin-bottom: 3px; }
+.heatmap-heading { font-variant-numeric: tabular-nums; color: var(--faint); font-size: 11px; margin-bottom: 3px; }
 .heatmap-row > span:first-child { font-size: 12px; color: var(--muted); }
-.sun-cell { display: block; padding: 5px 6px; min-height: 28px; border-radius: 2px; color: var(--ink); font-family: var(--mono); font-size: 11px; text-align: center; }
+.sun-cell { display: block; padding: 5px 6px; min-height: 28px; border-radius: 2px; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; }
 .heatmap-key { font-size: 11.5px; color: var(--faint); margin-top: 8px; }
 
 .legend {
   display: flex; gap: 14px; flex-wrap: wrap;
-  font-size: 11px; color: var(--faint); margin-top: 10px; font-family: var(--mono);
+  font-size: 11px; color: var(--faint); margin-top: 10px; font-variant-numeric: tabular-nums;
 }
 .legend i {
   display: inline-block; width: 8px; height: 8px; border-radius: 1px;
@@ -443,7 +448,7 @@ canvas { display: block; width: 100%; height: auto; }
 .workings { margin-top: 12px; }
 .workings > summary {
   cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px;
-  font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
   color: var(--faint); padding: 8px 14px;
   border: 1px solid var(--line-bright); border-radius: var(--r);
   transition: color 140ms ease, border-color 140ms ease;
@@ -560,7 +565,7 @@ canvas { display: block; width: 100%; height: auto; }
 .bto-tag {
   display: inline-block; vertical-align: middle;
   margin-right: 8px; padding: 2px 6px;
-  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  font-variant-numeric: tabular-nums; font-size: 10px; font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--panel); background: var(--sun);
   border-radius: 3px;
@@ -588,7 +593,7 @@ canvas { display: block; width: 100%; height: auto; }
 .launches-toggle:hover { color: var(--ink); border-color: var(--faint); }
 .launches-toggle:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
 .launches-toggle small {
-  font-family: var(--mono); font-size: 10px; color: var(--faint);
+  font-variant-numeric: tabular-nums; font-size: 10px; color: var(--faint);
   border-left: 1px solid var(--line-bright); padding-left: 6px;
 }
 .launches-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--faint); }
@@ -602,7 +607,7 @@ canvas { display: block; width: 100%; height: auto; }
 }
 .launch-group + .launch-group { margin-top: 12px; }
 .launch-group > h3 {
-  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  font-variant-numeric: tabular-nums; font-size: 10px; font-weight: 500;
   text-transform: uppercase; letter-spacing: 0.1em; color: var(--faint);
   margin-bottom: 6px;
 }
@@ -617,7 +622,7 @@ canvas { display: block; width: 100%; height: auto; }
 .launches button b { display: block; font-size: 13px; font-weight: 600; }
 .launches button span {
   display: block; margin-top: 1px;
-  font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+  font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--faint);
 }
 .launches button:hover { border-color: var(--faint); }
 .launches button:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }

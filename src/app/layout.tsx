@@ -1,22 +1,18 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Manrope } from "next/font/google";
+import { Manrope } from "next/font/google";
 import "./globals.css";
 
 /**
- * Manrope brings a calm, rounded construction without becoming a display face;
- * IBM Plex Mono remains strictly for measured values and compact controls.
+ * One family throughout. Manrope brings a calm, rounded construction without
+ * becoming a display face, and it carries tabular figures — which is what a
+ * second, monospaced family was really here for: the measured values, the
+ * storey counts and the clock all hold their columns without it.
  */
 const sans = Manrope({
   subsets: ["latin"],
   variable: "--font-sans",
   weight: ["400", "500", "600", "700"],
 });
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  weight: ["400", "500"],
-});
-
 export const metadata: Metadata = {
   title: "Homing — sun and views for Singapore homes",
   description:
@@ -25,7 +21,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en-SG" className={`${sans.variable} ${mono.variable}`}>
+    <html lang="en-SG" className={sans.variable}>
       <body>{children}</body>
     </html>
   );
