@@ -31,9 +31,14 @@ export interface BtoSite {
   launch: string;
   /** Storeys in the tallest block on the site. */
   storeys: number;
+  /** Storeys in the shortest, where the launch gives a range. */
+  storeysLow?: number;
+  /** Estimated completion, as YYYY-MM. */
+  completion?: string;
+  blocks?: number;
   units?: number;
   at: { lat: number; lng: number };
-  source?: string;
+  sources?: string[];
   note?: string;
 }
 
@@ -60,6 +65,54 @@ export function loadBtoSites(): Promise<BtoSite[]> {
 /** Roof height of a block of this many storeys, at HDB's own residential rates. */
 export const btoHeight = (storeys: number) =>
   storeys * RESIDENTIAL_STOREY.floor + RESIDENTIAL_STOREY.roof;
+
+/**
+ * Launched sites matching what somebody typed.
+ *
+ * OneMap has never heard of "Lakeview Cascadia" and will not until the blocks
+ * are standing and addressed, which is five years after the flats were sold.
+ * Until then this is the only way to reach the one page in the app that is
+ * about them, so the search has to answer for it.
+ */
+export async function btoMatches(query: string) {
+  const q = query.trim().toLowerCase();
+  if (q.length < 3) return [];
+  return (await loadBtoSites())
+    .filter((site) => site.name.toLowerCase().includes(q) || site.town.toLowerCase() === q)
+    .map((site) => ({
+      lat: site.at.lat,
+      lng: site.at.lng,
+      // What the reader sees in the list, and then as the name of the unit.
+      building: site.name,
+      address: `BTO, ${site.town} · launched ${site.launch}`,
+      blockNo: null,
+      road: null,
+      postal: null,
+    }));
+}
+
+/**
+ * The launched site a point is standing on, if it is standing on one.
+ *
+ * This is what lets the app say [BTO] over a pin dropped on bare ground, and
+ * what gives the storey slider a real ceiling instead of the 25 it falls back
+ * to when it has no building to measure.
+ */
+export async function btoSiteAt(
+  plan: MasterPlanNearby,
+  projection: Projection,
+  x = 0,
+  y = 0,
+): Promise<BtoSite | null> {
+  for (const site of await loadBtoSites()) {
+    const [sx, sy] = projection.toLocal(site.at);
+    const parcel = plan.zones.find(
+      (zone) => zone.use !== "ROAD" && pointInPolygon(sx, sy, zone.ring),
+    );
+    if (parcel && pointInPolygon(x, y, parcel.ring)) return site;
+  }
+  return null;
+}
 
 /**
  * The launched sites near this window, as ceilings the outlook engine already

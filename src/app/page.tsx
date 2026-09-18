@@ -152,7 +152,12 @@ export default function Home() {
   }, [query, hits, active, choose, goHome]);
 
   const host = result?.host ?? null;
-  const storeys = host?.levels ?? (host ? Math.round((host.height - 4) / 3) : null);
+  // A launched BTO has no building yet, so `host` is null — but its storeys are
+  // announced, which is better evidence than anything inferred from a footprint.
+  const bto = result?.bto ?? null;
+  const storeys = host?.levels ?? (host ? Math.round((host.height - 4) / 3) : (bto?.storeys ?? null));
+  // 25 is the last resort for a pin with no building and no launch under it: a
+  // slider has to stop somewhere, and it is not a claim about this address.
   const maxFloor = Math.max(storeys ?? 25, 4);
   const sides = useMemo(() => groupSides(host?.faces ?? []), [host]);
 
@@ -272,7 +277,16 @@ export default function Home() {
         <div className="summary-stack">
           <section className="card unit-card">
             <h2>The unit</h2>
-            <div className="unit-name">{label}</div>
+            <div className="unit-name">
+              {bto && <span className="bto-tag">BTO</span>}
+              {bto ? bto.name : label}
+            </div>
+            {bto && (
+              <div className="bto-line">
+                Launched {monthName(bto.launch)}
+                {bto.completion ? `, due ${monthName(bto.completion)}` : ""} · {bto.town}
+              </div>
+            )}
             <div className="hint" style={{ marginBottom: 18 }}>
               {postal && <span className="postal">{postal}</span>}
               {/* A gap drawn in CSS is not a gap to a screen reader or to
@@ -280,9 +294,11 @@ export default function Home() {
               {postal && " "}
               {host
                 ? `${storeys} storeys${host.levels === null ? ", estimated" : ""}`
-                : result
-                  ? "no building mapped near this address"
-                  : "looking up the neighbourhood"}
+                : bto
+                  ? `${bto.blocks ? `${bto.blocks} blocks, ` : ""}${bto.storeysLow ? `${bto.storeysLow}–${bto.storeys}` : bto.storeys} storeys${bto.units ? `, ${bto.units.toLocaleString()} flats` : ""}`
+                  : result
+                    ? "no building mapped near this address"
+                    : "looking up the neighbourhood"}
             </div>
             {result && host && host.matchedBy === "nearest" && host.distanceFromPin > 25 && (
               <div className="hint" style={{ marginBottom: 18 }}>
@@ -290,7 +306,15 @@ export default function Home() {
                 {host.distanceFromPin} m away. Click the right one on the plan if it is not this.
               </div>
             )}
-            {result && !host && (
+            {result && !host && bto && (
+              <div className="hint" style={{ marginBottom: 18 }}>
+                Nothing is built here yet, so this is the sun and the skyline at storey{" "}
+                {activeFloor} on this site — not in a particular block.{" "}
+                {bto.blocks ? `The ${bto.blocks} blocks` : "The blocks"} are not drawn, so they do
+                not yet shade each other, and the window faces north until they are.
+              </div>
+            )}
+            {result && !host && !bto && (
               <div className="hint" style={{ marginBottom: 18 }}>
                 The sun is still worked out for this spot, but with no block to stand in the window
                 is treated as free-standing at storey {activeFloor}.
@@ -366,7 +390,7 @@ export default function Home() {
                   {busy ? (
                     <span className="working">Working out the answer for this window…</span>
                   ) : (
-                    <>Drag the orange dot to your unit. The blue fan shows the view from that window, and the red line is the sun. Dashed rooflines are estimated heights.</>
+                    <>Drag the orange dot to your unit, or walk it along the wall with the Window buttons. The blue fan shows the view from that window, and the red line is the sun. Dashed rooflines are estimated heights.</>
                   )}
                 </p>
                 {result.ground.length > 0 && (
@@ -512,6 +536,12 @@ export default function Home() {
       </p>
     </main>
   );
+}
+
+/** "2026-06" as "Jun 2026". Launch and completion are only ever known to a month. */
+function monthName(yyyymm: string) {
+  const [year, month] = yyyymm.split("-");
+  return `${MONTH_NAMES[Number(month) - 1] ?? month} ${year}`;
 }
 
 /** The scrubbed time, as a clock reads it. */

@@ -5,7 +5,7 @@ import { computeHorizon } from "./horizon";
 import { computeScores } from "./score";
 import { computeSunMetrics } from "./sun";
 import { hdbBlockByPostal } from "./hdb";
-import { btoCeilings } from "./bto";
+import { btoCeilings, btoSiteAt } from "./bto";
 import { masterPlanNear } from "./masterplan";
 import { REACH_M as NOISE_REACH_M, computeNoise } from "./noise";
 import { computeOutlook, groundKind } from "./outlook";
@@ -107,6 +107,12 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
   // launches in as ceilings lets the outlook engine read them with everything
   // else rather than learning a second kind of answer.
   plan.ceilings.push(...(await btoCeilings(plan, projection)));
+  // Standing on a launched site is the one case where there is no building to
+  // report and still something to say about where the pin is. A site with a
+  // block already standing on it is not one of those, so the building wins —
+  // and where that building was only the nearest one to the pin, the host card
+  // already says so in as many words.
+  const bto = host ? null : await btoSiteAt(plan, projection, viewpoint.x, viewpoint.y);
   const known = plan.zones.length > 0 || plan.ceilings.length > 0;
   const outlook = known
     ? computeOutlook(viewpoint, plan, (azimuth) => horizon.elevation[((Math.round(azimuth) % 360) + 360) % 360])
@@ -152,6 +158,18 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
           matchedBy: match!.matchedBy,
           distanceFromPin: Math.round(match!.distance),
           faces: faces.map((f) => ({ facing: f.facing, length: f.length })),
+        }
+      : null,
+    bto: bto
+      ? {
+          name: bto.name,
+          town: bto.town,
+          launch: bto.launch,
+          completion: bto.completion ?? null,
+          blocks: bto.blocks ?? null,
+          storeys: bto.storeys,
+          storeysLow: bto.storeysLow ?? null,
+          units: bto.units ?? null,
         }
       : null,
     buildings,

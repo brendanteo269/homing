@@ -133,6 +133,61 @@ export function nearestFacade(x: number, y: number, ring: [number, number][]): F
   return best ?? { x, y, facing: 0, distance: 0 };
 }
 
+/**
+ * Walk `byM` metres around a footprint, starting from the point on it nearest
+ * to (x, y). Negative goes the other way, and it wraps at the corner.
+ *
+ * This is how the window moves under a button instead of under a finger. A
+ * window is on a wall, so the only honest way to shift it is along one — and
+ * walking the outline keeps it on the building through every corner and every
+ * notch, including round the inside of a C-shaped block, where nudging in a
+ * compass direction would step it straight out into the courtyard.
+ */
+export function walkOutline(
+  x: number,
+  y: number,
+  ring: [number, number][],
+  byM: number,
+): [number, number] {
+  const n = ring.length;
+  if (n < 2) return [x, y];
+
+  const lengths: number[] = [];
+  let perimeter = 0;
+  let best = { edge: 0, t: 0, distance: Infinity };
+
+  for (let i = 0; i < n; i++) {
+    const [ax, ay] = ring[i];
+    const [bx, by] = ring[(i + 1) % n];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const length = Math.hypot(dx, dy);
+    lengths.push(length);
+    perimeter += length;
+    if (length < 1e-9) continue;
+
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (length * length)));
+    const distance = Math.hypot(x - (ax + t * dx), y - (ay + t * dy));
+    if (distance < best.distance) best = { edge: i, t, distance };
+  }
+  if (perimeter < 1e-9) return [x, y];
+
+  let along = best.t * lengths[best.edge];
+  for (let i = 0; i < best.edge; i++) along += lengths[i];
+  along = (((along + byM) % perimeter) + perimeter) % perimeter;
+
+  for (let i = 0; i < n; i++) {
+    if (along <= lengths[i] || i === n - 1) {
+      const [ax, ay] = ring[i];
+      const [bx, by] = ring[(i + 1) % n];
+      const f = lengths[i] < 1e-9 ? 0 : along / lengths[i];
+      return [ax + (bx - ax) * f, ay + (by - ay) * f];
+    }
+    along -= lengths[i];
+  }
+  return [x, y];
+}
+
 export interface Face {
   /** Outward normal of this face, degrees clockwise from north. */
   facing: number;

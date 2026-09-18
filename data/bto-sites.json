@@ -4,7 +4,7 @@
     "",
     "A launched BTO is the one thing the Master Plan cannot tell this app. The",
     "site is zoned RESIDENTIAL with a plot ratio, a plot ratio is not a height,",
-    "so outlook.ts reads it as 'no published ceiling' — which is honest and",
+    "so outlook.ts reads it as 'no published ceiling' \u2014 which is honest and",
     "useless, because HDB has announced the storeys and sold the flats. One",
     "point and one number here turns that direction into a definite answer.",
     "",
@@ -13,20 +13,32 @@
     "and stays right when the plan is rebuilt. Run `npm run check-bto` after",
     "editing to see which parcel each point picked up.",
     "",
-    "`storeys` is the TALLEST block on the site: the question this answers is",
-    "whether anything here can rise into a window's view, and the tallest block",
-    "is what settles it. Leave a site out rather than guess its height."
+    "`storeys` is the TALLEST block on the site, because the question this",
+    "answers is whether anything here can rise into a window's view, and the",
+    "tallest block settles it. `storeysLow` is the shortest, and is reported to",
+    "the reader so a range is never mistaken for one number. Leave a site out",
+    "rather than guess either."
   ],
   "sites": [
     {
       "name": "Lakeview Cascadia",
       "town": "Bishan",
       "launch": "2026-06",
+      "completion": "2031-06",
+      "blocks": 5,
       "storeys": 40,
-      "units": 1210,
-      "at": { "lat": 1.34907, "lng": 103.83617 },
-      "source": "https://www.recordbto.com/bto/lakeview-cascadia",
-      "note": "5 blocks, 18-40 storeys. Parcel identified as the vacant GPR 3.9 site 360 m west of Marymount MRT; confirm against HDB's site plan."
+      "storeysLow": 18,
+      "units": 1221,
+      "at": {
+        "lat": 1.34902,
+        "lng": 103.83613
+      },
+      "sources": [
+        "https://www.btohq.com/bto-project-spec/lakeview-cascadia",
+        "https://www.homeanddecor.com.sg/property/hdb/lakeview-cascadia-bto-review-5-minutes-marymount-mrt-long-4-25-years-building-time",
+        "OneMap gazetteer: searchVal=Lakeview Cascadia"
+      ],
+      "note": "Five blocks, 18-40 storeys, Prime, bounded by Upper Thomson Road. HDB does not publish which block is which height, so `storeys` is the tallest. Point is OneMap's own for the project name, and lands in the vacant GPR 3.9 parcel 360 m west of Marymount MRT."
     }
   ]
 }

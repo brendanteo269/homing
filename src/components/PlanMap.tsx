@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { compassName } from "@/lib/blockage";
-import { makeProjection, nearestFacade, rad } from "@/lib/geo";
+import { makeProjection, nearestFacade, rad, walkOutline } from "@/lib/geo";
 import { sunPosition } from "@/lib/solar";
 import type { AnalysisResult, Building, LatLng } from "@/lib/types";
 
@@ -91,6 +91,15 @@ const GRAB_RADIUS_COARSE_PX = 22;
  * a control as well as a drawing.
  */
 const HIDDEN_ALPHA = 0.28;
+/**
+ * How far one press of the window buttons slides it along the wall.
+ *
+ * A flat's frontage is seven to ten metres, so four moves the window by about
+ * half a unit: fine enough to pick a stack, coarse enough that crossing a long
+ * slab does not take thirty presses.
+ */
+const NUDGE_M = 4;
+
 /** Segments the sun ray is split into, so it can pass behind a block and out. */
 const RAY_SEGMENTS = 22;
 /** How far past the canvas edge the sun ray runs before it is cut. */
@@ -132,6 +141,20 @@ export default function PlanMap({
   // Where the marker is while a finger is on it. Null the rest of the time, so
   // the analysis stays the single source of truth once the finger lifts.
   const [placing, setPlacing] = useState<[number, number] | null>(null);
+  /**
+   * Whether the window can be moved by button as well as by dragging.
+   *
+   * The marker is a 4.5 px dot on a canvas that draws at about a third scale on
+   * a phone, and dragging it means covering the very thing being aimed at with
+   * a thumb. So under a touch screen the buttons are simply there; under a
+   * mouse, where the drag works well, they are offered and stay out of the way
+   * until asked for. Resolved after mount, because the server cannot know which
+   * it is and guessing would mismatch the first render.
+   */
+  const [nudging, setNudging] = useState(false);
+  useEffect(() => {
+    setNudging(window.matchMedia("(pointer: coarse)").matches);
+  }, []);
 
   // The view turns about the block being reported on, not about the pin: on a
   // condo the pin can sit out at the gate, and swivelling round a gate throws
@@ -222,6 +245,27 @@ export default function PlanMap({
     return [wall.x, wall.y];
   };
 
+  /**
+   * Slide the window along the wall, one press at a time.
+   *
+   * Left and right mean left and right on the screen, not clockwise round the
+   * outline: which way a footprint is wound is an accident of how it was drawn,
+   * and the camera turns anyway. So both candidates are projected and the one
+   * that actually moves the way the arrow points is the one taken.
+   */
+  const nudge = (dir: 1 | -1) => {
+    if (!host || busy) return;
+    const [mx, my] = marker;
+    const forward = walkOutline(mx, my, host.ring, NUDGE_M);
+    const back = walkOutline(mx, my, host.ring, -NUDGE_M);
+    const v = view(camera);
+    const rightwards = v.sx(forward[0], forward[1]) >= v.sx(back[0], back[1]);
+    const next = rightwards === dir > 0 ? forward : back;
+    setPlacing(next);
+    onPlaceWindow(makeProjection(result.origin).toLatLng(next[0], next[1]));
+    setPlacing(null);
+  };
+
   const swivel = (by: number) => setAzimuth((a) => a + by);
   const tilt = (by: number) => setPitch((p) => clampPitch(p + by));
   const scaleZoom = (by: number) => setZoom((z) => clampZoom(z * by));
@@ -278,6 +322,29 @@ export default function PlanMap({
           setPlacing(null);
         }}
       />
+
+      {/* The window's own controls, kept apart from the camera's: one moves the
+          unit being reported on, the others only change where you stand to look
+          at it. Mixing them in one row invites pressing the wrong sort. */}
+      {nudging ? (
+        <div className="window-nudge">
+          <span>Window</span>
+          <button onClick={() => nudge(-1)} disabled={!host || busy}
+            aria-label={`Move the window ${NUDGE_M} metres left along the block`} title="Move left along the wall">
+            <Glyph d="M13 9H5M8.5 5.5 5 9l3.5 3.5" />
+          </button>
+          <button onClick={() => nudge(1)} disabled={!host || busy}
+            aria-label={`Move the window ${NUDGE_M} metres right along the block`} title="Move right along the wall">
+            <Glyph d="M5 9h8M9.5 5.5 13 9l-3.5 3.5" />
+          </button>
+          {!host && <small>no block here to move along</small>}
+          <button className="as-text" onClick={() => setNudging(false)}>Hide</button>
+        </div>
+      ) : (
+        <div className="window-nudge">
+          <button className="as-text" onClick={() => setNudging(true)}>Move the window with buttons</button>
+        </div>
+      )}
 
       <div className="plan-controls">
         <button onClick={() => swivel(-SWIVEL_STEP)} aria-label="Turn the view left" title="Turn left">

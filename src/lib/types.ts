@@ -156,6 +156,24 @@ export interface AnalysisResult {
     /** The sides of the block, longest first — what a window can actually face. */
     faces: { facing: number; length: number }[];
   } | null;
+  /**
+   * The launched BTO this pin is standing on, when it is standing on one.
+   *
+   * A site with nothing built on it yet has no footprint, so `host` is null and
+   * the app would otherwise have nothing to say about where the pin is. This is
+   * what it says instead: the name, when it was launched, when it is due, and
+   * how tall it will be.
+   */
+  bto: {
+    name: string;
+    town: string;
+    launch: string;
+    completion: string | null;
+    blocks: number | null;
+    storeys: number;
+    storeysLow: number | null;
+    units: number | null;
+  } | null;
   buildings: Building[];
   horizon: { elevation: number[]; distance: number[] };
   sun: SunMetrics;
