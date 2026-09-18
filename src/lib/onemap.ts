@@ -62,7 +62,28 @@ export async function lookupPostal(postal: string): Promise<AddressHit | null> {
   return exact;
 }
 
-async function fetchSearch(query: string): Promise<AddressHit[]> {
+/**
+ * Lookups already on the wire, by query.
+ *
+ * Fifty readers arriving at once and typing the same thing used to be fifty
+ * requests to OneMap, all of them for the same answer, and OneMap's limit is a
+ * burst one — so a crowd refused itself. They wait on the first request now.
+ * The entry is dropped as soon as it settles, so this is a coalescing window a
+ * few hundred milliseconds wide and never a cache: the disk cache is the cache,
+ * and it is what holds the answer afterwards.
+ */
+const inFlight = new Map<string, Promise<AddressHit[]>>();
+
+function fetchSearch(query: string): Promise<AddressHit[]> {
+  const waiting = inFlight.get(query);
+  if (waiting) return waiting;
+
+  const request = fetchSearchNow(query).finally(() => inFlight.delete(query));
+  inFlight.set(query, request);
+  return request;
+}
+
+async function fetchSearchNow(query: string): Promise<AddressHit[]> {
   const url = new URL("https://www.onemap.gov.sg/api/common/elastic/search");
   url.searchParams.set("searchVal", query);
   url.searchParams.set("returnGeom", "Y");

@@ -1,10 +1,27 @@
 import { NextResponse } from "next/server";
 import { analyse } from "@/lib/analyse";
+import { callerOf, take } from "@/lib/limit";
 import { inSingapore, lookupPostal, parsePostal } from "@/lib/onemap";
 
 export const maxDuration = 120;
 
+/**
+ * An answer costs a second of real work — a horizon cast over every azimuth,
+ * a year of sun sampled against it — and every distinct coordinate misses
+ * every cache, so there is nothing between a loop and the bill but this.
+ * Twenty a minute is far more than dragging the window marker ever asks for.
+ */
+const LIMIT = { perMinute: 20, burst: 10 };
+
 export async function POST(request: Request) {
+  const limit = take(`analyse:${callerOf(request)}`, LIMIT);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Too many requests — give it a moment." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfter) } },
+    );
+  }
+
   let body: {
     lat?: number;
     lng?: number;
@@ -24,8 +41,12 @@ export async function POST(request: Request) {
   let address = body.address;
   const { floor, face } = body;
   const win = body.window;
+  // Held to the same bounds as the pin. Only the origin was checked, so a
+  // window dropped in the Pacific reached the engine and came back confidently
+  // scored from the nothing that is out there — the exact failure the comment
+  // below describes, through the one door that was left open.
   const windowAt =
-    win && Number.isFinite(win.lat) && Number.isFinite(win.lng)
+    win && inSingapore({ lat: win.lat as number, lng: win.lng as number })
       ? { lat: win.lat as number, lng: win.lng as number }
       : undefined;
 

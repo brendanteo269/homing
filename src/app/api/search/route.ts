@@ -1,9 +1,28 @@
 import { NextResponse } from "next/server";
 import { btoMatches } from "@/lib/bto";
+import { callerOf, take } from "@/lib/limit";
 import { looksLikePostalPrefix, parsePostal, searchAddress } from "@/lib/onemap";
 
+/**
+ * This forwards what is typed to OneMap, so being loud here is being loud at
+ * the Land Authority under this deployment's address — and their throttle
+ * answers by refusing everybody, not just whoever earned it. The allowance is
+ * generous because a search fires as somebody types.
+ */
+const LIMIT = { perMinute: 60, burst: 20 };
+/** Longer than anything a person means to type, and short enough to bound the key. */
+const MAX_QUERY = 120;
+
 export async function GET(request: Request) {
-  const q = new URL(request.url).searchParams.get("q")?.trim();
+  const limit = take(`search:${callerOf(request)}`, LIMIT);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { results: [], error: "Too many searches — give it a moment." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfter) } },
+    );
+  }
+
+  const q = new URL(request.url).searchParams.get("q")?.trim().slice(0, MAX_QUERY);
   if (!q) return NextResponse.json({ results: [] });
 
   // A postal code is worth looking up the moment it is complete, and worth

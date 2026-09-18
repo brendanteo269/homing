@@ -8,7 +8,21 @@ import path from "node:path";
  * volunteers — and both rate-limit hard, so the polite thing and the fast thing
  * are the same thing: ask once, keep the answer.
  */
-const CACHE_ROOT = path.join(process.cwd(), ".cache");
+/*
+ * On a serverless host the working directory is read-only, so every write here
+ * failed silently and the cache did nothing at all — which is invisible in
+ * development, where the repo cache is warm, and expensive in production, where
+ * it meant every search and every postal code went to OneMap live. OneMap
+ * rate-limits anonymous callers on a burst of two, so the cache that was meant
+ * to keep the app polite was the reason it was not. /tmp is the one writable
+ * path there and it survives between warm invocations, which is most of them.
+ *
+ * The footprint cache in buildings.ts has always done this; this one was
+ * written before it and never caught up.
+ */
+const CACHE_ROOT = process.env.VERCEL
+  ? path.join("/tmp", "homing-cache")
+  : path.join(process.cwd(), ".cache");
 
 export async function readCache<T>(namespace: string, key: string, ttlMs: number): Promise<T | null> {
   try {
