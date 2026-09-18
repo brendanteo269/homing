@@ -49,6 +49,13 @@ export interface OutlookMetrics {
   knownDegrees: number;
   /** How far out the question was asked, metres. */
   reachM: number;
+  /**
+   * Launched BTOs standing in this outlook, widest first. These are the only
+   * at-risk ground the app can name: everywhere else "at risk" means the plan
+   * permits something tall, while here the blocks are drawn and the flats are
+   * sold.
+   */
+  launches: { label: string; arcDegrees: number; distance: number; bearing: number }[];
   /** What is doing the protecting, widest first. */
   protectors: { label: string; arcDegrees: number; distance: number; bearing: number }[];
   /** Durable foregrounds, currently water only, widest first. */
@@ -150,6 +157,7 @@ export function computeOutlook(
   let durableForegroundDegrees = 0;
   let knownDegrees = 0;
   const protectors = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
+  const launches = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
   const durableForegrounds = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
   const zones = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
 
@@ -159,11 +167,18 @@ export function computeOutlook(
     const cos = Math.cos(rad(azimuth));
 
     let known = false;
+    // Set once the ray reaches ground the plan puts no ceiling on. Nothing
+    // beyond it can be promised — but a launched BTO is not a promise, it is a
+    // building with a completion date, and ground nobody has published a limit
+    // for cannot un-build it. So the ray stops deciding and keeps walking, and
+    // only a certainty is still allowed to answer.
+    let stopped = false;
     // Every direction ends as exactly one of these, so the three shares and the
     // already-closed count add up to the whole outlook and none of them is the
     // silent remainder of the others.
     let outcome: "secured" | "at-risk" | "unknown" = "secured";
     let credit: { label: string; distance: number } | null = null;
+    let launch: { label: string; distance: number } | null = null;
     let durableForeground: { label: string; distance: number } | null = null;
     let firstZone: { use: string; gpr: string; distance: number } | null = null;
 
@@ -173,11 +188,15 @@ export function computeOutlook(
       if (onHomeLand(px, py)) continue;
 
       const cell = grid.get(cellKey(px, py));
-      if (!durableForeground && cell) {
+      // Everything but the search for a certainty stops where the plan does.
+      // A reservoir behind ground nobody has published a limit for is not a
+      // foreground this window can count on, and the zoning behind it is not
+      // what this window faces.
+      if (!durableForeground && cell && !stopped) {
         const water = durableAt(px, py, cell);
         if (water) durableForeground = { label: water, distance: d };
       }
-      if (!firstZone && cell) {
+      if (!firstZone && cell && !stopped) {
         // Roads count for protection — nothing can be built on one — but they
         // are useless in a list of what the outlook faces. Nearly every window
         // in Singapore looks over a road first, so reporting it crowds out the
@@ -191,15 +210,25 @@ export function computeOutlook(
         // Ground with no published ceiling could hold anything, so the
         // question stops being answerable here.
         outcome = "unknown";
-        break;
+        stopped = true;
+        continue;
       }
+      // Past that point a planning limit says nothing useful — whatever it
+      // allows, the unreadable ground in front of it could already be worse.
+      if (stopped && !ceiling.bto) continue;
 
       known = true;
       const elevation = (Math.atan2(ceiling.height - z, d) * 180) / Math.PI;
       if (elevation >= CLEAR_DEG) {
         outcome = "at-risk";
+        if (ceiling.bto) launch = { label: ceiling.what, distance: d };
         break;
       }
+      // A launched BTO is short enough to leave this direction open — and it is
+      // still a building going up, not ground that keeps a view. Crediting it
+      // would print "nothing can be built here" over a site whose flats are
+      // already sold, so it clears the direction without ever protecting it.
+      if (ceiling.bto) continue;
       if (!credit || d < credit.distance) credit = { label: ceiling.what, distance: d };
     }
 
@@ -252,6 +281,14 @@ export function computeOutlook(
     }
     if (outcome === "at-risk") {
       atRiskDegrees++;
+      if (launch) {
+        const seen = launches.get(launch.label);
+        if (seen) {
+          seen.arcDegrees++;
+          if (launch.distance < seen.distance) seen.bearing = azimuth;
+          seen.distance = Math.min(seen.distance, launch.distance);
+        } else launches.set(launch.label, { arcDegrees: 1, distance: launch.distance, bearing: azimuth });
+      }
       continue;
     }
 
@@ -274,6 +311,9 @@ export function computeOutlook(
     durableForegroundDegrees,
     knownDegrees,
     reachM: REACH_M,
+    launches: [...launches]
+      .map(([label, v]) => ({ label, ...v, distance: Math.round(v.distance) }))
+      .sort((p, q) => q.arcDegrees - p.arcDegrees),
     protectors: [...protectors]
       .map(([label, v]) => ({ label, ...v, distance: Math.round(v.distance) }))
       .sort((p, q) => q.arcDegrees - p.arcDegrees),
@@ -297,14 +337,18 @@ export function computeOutlook(
  * Lowest wins. A landed housing envelope inside a residential zone is the
  * binding number, and a monument cannot be replaced by anything at all.
  */
-function ceilingAt(x: number, y: number, cell: Cell): { height: number; what: string } | null {
-  let best: { height: number; what: string } | null = null;
-  const take = (height: number, what: string) => {
-    if (!best || height < best.height) best = { height, what };
+function ceilingAt(
+  x: number,
+  y: number,
+  cell: Cell,
+): { height: number; what: string; bto?: boolean } | null {
+  let best: { height: number; what: string; bto?: boolean } | null = null;
+  const take = (height: number, what: string, bto?: boolean) => {
+    if (!best || height < best.height) best = { height, what, bto };
   };
 
   for (const m of cell.monuments) if (pointInPolygon(x, y, m.ring)) take(0, `${m.name} (monument)`);
-  for (const c of cell.ceilings) if (pointInPolygon(x, y, c.ring)) take(c.height, c.what);
+  for (const c of cell.ceilings) if (pointInPolygon(x, y, c.ring)) take(c.height, c.what, c.bto);
   for (const zn of cell.zones) {
     const open = OPEN_LAND_CEILING_M[zn.use];
     if (open !== undefined && pointInPolygon(x, y, zn.ring)) take(open, zn.use.toLowerCase());

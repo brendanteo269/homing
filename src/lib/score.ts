@@ -117,6 +117,18 @@ function buildNotes(
     );
   }
 
+  // A launched BTO outranks everything else that could be said about the
+  // future of this view, because it is the only part of it that is settled.
+  // Everywhere else "at risk" means the plan would allow something; here the
+  // storeys are announced and the flats are sold, and a reader deciding on
+  // this flat today is the exact person who needs to know.
+  const launch = outlook?.launches[0];
+  if (launch) {
+    notes.push(
+      `${launch.label} is going up ${launch.distance} m away and will stand across ${launch.arcDegrees}° of this view. That part of the outlook is already spoken for.`,
+    );
+  }
+
   // What the view is worth in ten years, which is a different question from
   // what it is worth now and the one a buyer cannot look up anywhere.
   const water = outlook?.durableForegrounds.find((foreground) => foreground.label === "Water");

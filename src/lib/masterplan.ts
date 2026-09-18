@@ -34,6 +34,12 @@ export interface Ceiling {
   /** What sets it, e.g. "landed housing, 3 storeys". */
   what: string;
   ring: [number, number][];
+  /**
+   * Set when this is a launched BTO rather than a planning limit. The height
+   * is read the same way, but it is a building with a completion date, so it
+   * can never be credited as ground that keeps a view open.
+   */
+  bto?: boolean;
 }
 
 export interface Monument {

@@ -5,6 +5,7 @@ import { computeHorizon } from "./horizon";
 import { computeScores } from "./score";
 import { computeSunMetrics } from "./sun";
 import { hdbBlockByPostal } from "./hdb";
+import { btoCeilings } from "./bto";
 import { masterPlanNear } from "./masterplan";
 import { REACH_M as NOISE_REACH_M, computeNoise } from "./noise";
 import { computeOutlook, groundKind } from "./outlook";
@@ -101,6 +102,11 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
   // half a kilometre off is still audible, long after it has stopped being
   // visible.
   const plan = await masterPlanNear(origin, Math.max(radiusM, PLAN_RADIUS_M), projection);
+  // A BTO that has been launched is a height the plan does not carry: the site
+  // is zoned by plot ratio, and a plot ratio is not a storey count. Folding the
+  // launches in as ceilings lets the outlook engine read them with everything
+  // else rather than learning a second kind of answer.
+  plan.ceilings.push(...(await btoCeilings(plan, projection)));
   const known = plan.zones.length > 0 || plan.ceilings.length > 0;
   const outlook = known
     ? computeOutlook(viewpoint, plan, (azimuth) => horizon.elevation[((Math.round(azimuth) % 360) + 360) % 360])

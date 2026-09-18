@@ -10,7 +10,11 @@ const nextConfig: NextConfig = {
   // otherwise leave it behind — and the deployed app would quietly fall back
   // to inferring every height from OpenStreetMap.
   outputFileTracingIncludes: {
-    "/api/analyse": ["./data/hdb-blocks.json.gz", "./data/masterplan.json.gz"],
+    "/api/analyse": [
+      "./data/hdb-blocks.json.gz",
+      "./data/masterplan.json.gz",
+      "./data/bto-sites.json",
+    ],
   },
 };
 

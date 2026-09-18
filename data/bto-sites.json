@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "BTO sites that have been launched but are not yet built, hand-maintained.",
+    "",
+    "A launched BTO is the one thing the Master Plan cannot tell this app. The",
+    "site is zoned RESIDENTIAL with a plot ratio, a plot ratio is not a height,",
+    "so outlook.ts reads it as 'no published ceiling' — which is honest and",
+    "useless, because HDB has announced the storeys and sold the flats. One",
+    "point and one number here turns that direction into a definite answer.",
+    "",
+    "No polygon is drawn by hand. `at` only has to land inside the site; the",
+    "outline comes from the Master Plan parcel under it, which is authoritative",
+    "and stays right when the plan is rebuilt. Run `npm run check-bto` after",
+    "editing to see which parcel each point picked up.",
+    "",
+    "`storeys` is the TALLEST block on the site: the question this answers is",
+    "whether anything here can rise into a window's view, and the tallest block",
+    "is what settles it. Leave a site out rather than guess its height."
+  ],
+  "sites": [
+    {
+      "name": "Lakeview Cascadia",
+      "town": "Bishan",
+      "launch": "2026-06",
+      "storeys": 40,
+      "units": 1210,
+      "at": { "lat": 1.34907, "lng": 103.83617 },
+      "source": "https://www.recordbto.com/bto/lakeview-cascadia",
+      "note": "5 blocks, 18-40 storeys. Parcel identified as the vacant GPR 3.9 site 360 m west of Marymount MRT; confirm against HDB's site plan."
+    }
+  ]
+}

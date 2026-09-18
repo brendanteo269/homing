@@ -64,6 +64,9 @@ const STOREY: Record<"residential" | "carpark" | "other", { floor: number; roof:
   other: { floor: 3.5, roof: 2.0 },
 };
 
+/** HDB's own residential rates, shared with the launched-BTO heights in bto.ts. */
+export const RESIDENTIAL_STOREY = STOREY.residential;
+
 /** Roof height above ground for a block, or null if its storeys are unknown. */
 export function hdbHeight(block: HdbBlock): number | null {
   if (!block.maxFloorLevel) return null;
