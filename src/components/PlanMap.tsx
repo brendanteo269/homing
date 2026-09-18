@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { compassName } from "@/lib/blockage";
+import { compassName, describeBuilding } from "@/lib/blockage";
 import { makeProjection, nearestFacade, rad, walkOutline } from "@/lib/geo";
 import { sunPosition } from "@/lib/solar";
 import type { AnalysisResult, Building, LatLng } from "@/lib/types";
@@ -138,6 +138,14 @@ export default function PlanMap({
   const [pitch, setPitch] = useState(PITCH_HOME);
   const [zoom, setZoom] = useState(1);
   const drag = useRef<{ x: number; y: number; azimuth: number; pitch: number } | null>(null);
+  /**
+   * The massing as the last frame drew it, far block first, so the pointer can
+   * be asked what it is over. Rebuilt every draw: these are canvas-space paths
+   * and the camera moves.
+   */
+  const hits = useRef<{ id: string; path: Path2D }[]>([]);
+  /** The block under the cursor, and where to put its name. */
+  const [hover, setHover] = useState<{ label: string; x: number; y: number } | null>(null);
   // Where the marker is while a finger is on it. Null the rest of the time, so
   // the analysis stays the single source of truth once the finger lifts.
   const [placing, setPlacing] = useState<[number, number] | null>(null);
@@ -210,7 +218,10 @@ export default function PlanMap({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // One draw per frame at most. A drag fires pointer events far faster than
     // the massing can be repainted, and without this the queue runs away.
-    const frame = requestAnimationFrame(() => draw(ctx, result, timeMinutes, day, camera, marker));
+    const frame = requestAnimationFrame(() => {
+      hits.current = [];
+      draw(ctx, result, timeMinutes, day, camera, marker, hits.current);
+    });
     return () => cancelAnimationFrame(frame);
   }, [result, timeMinutes, day, camera, marker]);
 
@@ -231,6 +242,19 @@ export default function PlanMap({
     const v = view(camera);
     const [mx, my] = marker;
     return Math.hypot(px - v.sx(mx, my), py - v.sy(mx, my, result.viewpoint.z)) <= grab;
+  };
+
+  /**
+   * Which block is under the pointer. The list is drawn far to near, so it is
+   * read near to far: the answer is whichever one the reader can actually see.
+   */
+  const blockAt = (px: number, py: number) => {
+    const ctx = ref.current?.getContext("2d");
+    if (!ctx) return null;
+    for (let i = hits.current.length - 1; i >= 0; i--) {
+      if (ctx.isPointInPath(hits.current[i].path, px, py)) return hits.current[i].id;
+    }
+    return null;
   };
 
   /**
@@ -279,6 +303,7 @@ export default function PlanMap({
         style={{ aspectRatio: `${W} / ${H}` }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
+          setHover(null);
           const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
           // Either the marker is being taken hold of, or the view is being
           // swivelled. The marker is the more specific, so it is asked first.
@@ -298,7 +323,17 @@ export default function PlanMap({
           if (!d) {
             // Nothing is being dragged, so the cursor's job is to say what could be.
             const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
-            e.currentTarget.style.cursor = !busy && onMarker(px, py, e.currentTarget) ? "grab" : "";
+            const grabbable = !busy && onMarker(px, py, e.currentTarget);
+            e.currentTarget.style.cursor = grabbable ? "grab" : "";
+            // The marker is the more specific target, so it keeps the pointer.
+            const id = grabbable ? null : blockAt(px, py);
+            const b = id ? result.buildings.find((x) => x.id === id) : null;
+            const box = e.currentTarget.getBoundingClientRect();
+            setHover(
+              b
+                ? { label: describeBuilding(b), x: e.clientX - box.left, y: e.clientY - box.top }
+                : null,
+            );
             return;
           }
           // One drag does both: across turns the camera round the block,
@@ -321,7 +356,17 @@ export default function PlanMap({
           drag.current = null;
           setPlacing(null);
         }}
+        onPointerLeave={() => setHover(null)}
       />
+
+      {/* Named, not explained: the drawing already says how tall a block is and
+          how much it eats, and the one thing it cannot say is which block it is.
+          The screen reader gets the same names from the plan's description. */}
+      {hover && (
+        <div className="plan-tip" style={{ left: hover.x, top: hover.y }} aria-hidden>
+          {hover.label}
+        </div>
+      )}
 
       {/* The window's own controls, kept apart from the camera's: one moves the
           unit being reported on, the others only change where you stand to look
@@ -545,6 +590,7 @@ function draw(
   day: { month: number; day: number },
   camera: Camera,
   marker: [number, number],
+  hits?: { id: string; path: Path2D }[],
 ) {
   const v = view(camera);
   const c = palette();
@@ -585,7 +631,8 @@ function draw(
     (a, b) => v.depth(...centroid(b.ring)) - v.depth(...centroid(a.ring)),
   );
   for (const b of ordered) {
-    drawBlock(ctx, v, c, b, b.id === result.viewpoint.hostId, blockerIds.has(b.id));
+    const path = drawBlock(ctx, v, c, b, b.id === result.viewpoint.hostId, blockerIds.has(b.id));
+    hits?.push({ id: b.id, path });
   }
 
   // The fan stands in the model now rather than lying under it, so it is drawn
@@ -754,7 +801,7 @@ function drawBlock(
   b: Building,
   isHost: boolean,
   isBlocker: boolean,
-) {
+): Path2D {
   const ring = b.ring;
   const h = b.height;
   // Which side of an edge is outside is a property of the whole ring, so it is
@@ -830,6 +877,13 @@ function drawBlock(
     ctx.textBaseline = "middle";
     ctx.fillText(b.blockNo, v.sx(gx, gy), v.sy(gx, gy, h));
   }
+
+  // The silhouette, for hit-testing: the same faces that were just drawn, so
+  // what the pointer finds is what the reader is looking at.
+  const hit = new Path2D();
+  for (const wall of walls) addFace(hit, wall.pts);
+  addFace(hit, roof);
+  return hit;
 }
 
 /**

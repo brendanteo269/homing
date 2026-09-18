@@ -648,3 +648,20 @@ canvas { display: block; width: 100%; height: auto; }
   .launches button { padding: 10px 10px; margin-bottom: 6px; }
   .launches-toggle { padding: 8px 10px; }
 }
+
+/* The block's name, following the cursor. Offset clear of the pointer so it
+   never covers the thing being pointed at, and inert so it cannot steal the
+   press that moves the window. */
+.plan-tip {
+  position: absolute;
+  transform: translate(14px, -160%);
+  pointer-events: none;
+  padding: 3px 7px;
+  border-radius: var(--r);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  z-index: 2;
+}
