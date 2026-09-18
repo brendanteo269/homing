@@ -14,7 +14,16 @@ const MIRRORS = [
 const USER_AGENT =
   "homing/0.1 (Singapore sun and blockage prototype; https://github.com/homing-sg)";
 
-const CACHE_DIR = path.join(process.cwd(), ".cache", "overpass");
+/*
+ * On a serverless host the working directory is read-only, so a cache written
+ * beside the source is silently dropped and every request pays Overpass again —
+ * which is invisible in development, where the repo cache is warm and hides the
+ * cost entirely. /tmp is the one writable path there, and it survives between
+ * warm invocations of the same instance, which is most of them.
+ */
+const CACHE_DIR = process.env.VERCEL
+  ? path.join("/tmp", "overpass")
+  : path.join(process.cwd(), ".cache", "overpass");
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 
 interface OverpassWay {
@@ -305,16 +314,34 @@ function runQuery(query: string): Promise<OverpassResponse> {
  */
 const ROUNDS = 3;
 const BACKOFF_MS = [0, 4000, 12000];
+/*
+ * The ladder has to finish inside the host's function limit, with room left to
+ * do the geometry and send the answer. Run past it and the host kills the
+ * invocation mid-response: the browser reports an aborted connection and the
+ * reader is told nothing at all. Giving up a little early is worth a great
+ * deal, because it comes back as a sentence explaining that the mirrors are
+ * busy rather than as a dead request.
+ */
+const BUDGET_MS = 85000;
+/** No single mirror may eat the budget while the others sit untried. */
+const ATTEMPT_MS = 25000;
 
 async function fetchQuery(query: string): Promise<OverpassResponse> {
   const cached = await readCache(query);
   if (cached) return cached;
 
+  const deadline = Date.now() + BUDGET_MS;
   let lastError: unknown = null;
   for (let round = 0; round < ROUNDS; round++) {
-    if (BACKOFF_MS[round]) await sleep(BACKOFF_MS[round]);
+    // Backing off is only worth it if there is time left to use the result.
+    if (BACKOFF_MS[round]) {
+      if (Date.now() + BACKOFF_MS[round] >= deadline) break;
+      await sleep(BACKOFF_MS[round]);
+    }
 
     for (const mirror of MIRRORS) {
+      const left = deadline - Date.now();
+      if (left <= 0) break;
       try {
         const res = await fetch(mirror, {
           method: "POST",
@@ -324,7 +351,7 @@ async function fetchQuery(query: string): Promise<OverpassResponse> {
             "User-Agent": USER_AGENT,
           },
           body: new URLSearchParams({ data: query }),
-          signal: AbortSignal.timeout(75000),
+          signal: AbortSignal.timeout(Math.min(ATTEMPT_MS, left)),
         });
         if (!res.ok) throw new Error(`${mirror} returned ${res.status}`);
         const json = (await res.json()) as OverpassResponse;
