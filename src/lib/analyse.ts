@@ -1,4 +1,4 @@
-import { FLOOR_HEIGHT_M, fetchBuildings } from "./buildings";
+import { FLOOR_HEIGHT_M, fetchBuildings, fetchNamedPlaces } from "./buildings";
 import { computeBlockage, describeBuilding } from "./blockage";
 import { angleDelta, buildingFaces, makeProjection, nearestFacade, pointInPolygon, polygonArea, polygonCentroid, rad, wrap360, type Face } from "./geo";
 import { computeHorizon } from "./horizon";
@@ -6,8 +6,8 @@ import { computeScores } from "./score";
 import { computeSunMetrics } from "./sun";
 import { hdbBlockByPostal } from "./hdb";
 import { masterPlanNear } from "./masterplan";
-import { computeNoise } from "./noise";
-import { computeOutlook } from "./outlook";
+import { REACH_M as NOISE_REACH_M, computeNoise } from "./noise";
+import { computeOutlook, groundKind } from "./outlook";
 import { normaliseStreet } from "./street";
 import type { AnalysisResult, Building, Confidence, LatLng, Viewpoint } from "./types";
 
@@ -39,6 +39,12 @@ export interface AnalyseInput extends LatLng {
 const DEFAULT_RADIUS_M = 600;
 /** How far out to read the Master Plan, whatever the building radius is. */
 const PLAN_RADIUS_M = 900;
+/**
+ * How far out the plan drawing is sent. The map culls past its own frame
+ * anyway, and a parcel averages a dozen points, so this is a few hundred
+ * polygons at worst — cheaper than one of the building footprints beside it.
+ */
+const GROUND_DRAW_M = 350;
 /** How far the eye sits outside the wall, and how high above the floor slab. */
 const STANDOFF_M = 0.6;
 const EYE_ABOVE_FLOOR_M = 1.5;
@@ -60,6 +66,11 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
   const origin: LatLng = { lat: input.lat, lng: input.lng };
   const projection = makeProjection(origin);
   const radiusM = input.radiusM ?? DEFAULT_RADIUS_M;
+
+  // Started here and awaited at the end: the names have nothing to do with the
+  // geometry, so there is no reason for the reader to wait for them in series.
+  // fetchNamedPlaces swallows its own failures, so this never rejects unhandled.
+  const named = fetchNamedPlaces(origin, Math.max(radiusM, NOISE_REACH_M), projection);
 
   const { buildings, dataTimestamp } = await fetchBuildings(origin, radiusM, projection);
   const match = findHost(buildings, input.address);
@@ -85,7 +96,21 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
   const outlook = known
     ? computeOutlook(viewpoint, plan, (azimuth) => horizon.elevation[((Math.round(azimuth) % 360) + 360) % 360])
     : null;
-  const noise = known ? computeNoise(viewpoint, horizon, plan) : null;
+  // Names come only from features tagged as the thing that makes the noise, not
+  // from whatever footprint happens to stand on the parcel. Falling back to any
+  // named building nearby raises the hit rate and captions a bus depot "Church
+  // of Christ the King", which is worse than saying nothing: a reader can work
+  // with an unnamed category and cannot work with a confident wrong answer.
+  const noise = known ? computeNoise(viewpoint, horizon, plan, await named) : null;
+
+  const ground = plan.zones.flatMap((zn) => {
+    const kind = groundKind(zn.use);
+    if (!kind) return [];
+    const near = zn.ring.some(
+      ([px, py]) => Math.hypot(px - viewpoint.x, py - viewpoint.y) < GROUND_DRAW_M,
+    );
+    return near ? [{ kind, ring: zn.ring }] : [];
+  });
 
   const scores = computeScores(sun, blockage, viewpoint, outlook);
 
@@ -118,6 +143,7 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
     sun,
     blockage,
     outlook,
+    ground,
     noise,
     confidence: summariseConfidence(buildings, blockage, dataTimestamp),
     scores,

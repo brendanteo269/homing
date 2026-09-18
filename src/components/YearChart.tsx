@@ -23,8 +23,8 @@ export default function YearChart({ sun }: { sun: SunMetrics }) {
         return (
           <div className="heatmap-row" key={MONTHS[i]}>
             <span>{MONTHS[i]}</span>
-            <SunCell hours={before} max={max} colour="var(--steel)" label={`${MONTHS[i]}, before 2pm`} />
-            <SunCell hours={afternoon} max={max} colour="var(--sun)" label={`${MONTHS[i]}, after 2pm`} />
+            <SunCell hours={before} max={max} colour="var(--sun-early)" label={`${MONTHS[i]}, before 2pm`} />
+            <SunCell hours={afternoon} max={max} colour="var(--sun-late)" label={`${MONTHS[i]}, after 2pm`} />
           </div>
         );
       })}
@@ -34,7 +34,9 @@ export default function YearChart({ sun }: { sun: SunMetrics }) {
 }
 
 function SunCell({ hours, max, colour, label }: { hours: number; max: number; colour: string; label: string }) {
-  const alpha = 0.12 + (hours / max) * 0.88;
+  // Stops at 0.72 rather than 1: past that the hours printed in the cell
+  // stop clearing AA against the fill they sit on.
+  const alpha = 0.12 + (hours / max) * 0.6;
   return (
     <span
       className="sun-cell"

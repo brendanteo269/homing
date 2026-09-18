@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "check-outlook": "tsx scripts/check-outlook.ts",
     "analyse": "tsx scripts/analyse.ts",
     "calibrate": "tsx scripts/calibrate.ts",
     "build-hdb": "tsx scripts/build-hdb.ts",

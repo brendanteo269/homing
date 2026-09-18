@@ -34,6 +34,9 @@ const SEASONS = [
 export default function Home() {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<AddressHit[]>([]);
+  // Which result the arrow keys are on. A fresh set of hits starts on the
+  // first, because that is the one Enter has always taken.
+  const [active, setActive] = useState(0);
   const [searchNote, setSearchNote] = useState<string | null>(null);
   const [point, setPoint] = useState<LatLng>(START.point);
   const [label, setLabel] = useState(START.label);
@@ -60,6 +63,18 @@ export default function Home() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const choose = useCallback((h: AddressHit) => {
+    setPoint({ lat: h.lat, lng: h.lng });
+    setLabel(h.building ?? withoutPostal(h.address));
+    setPostal(h.postal);
+    setAddress({ blockNo: h.blockNo, street: h.road, postal: h.postal });
+    setFace(undefined);
+    setWindowAt(null);
+    setQuery("");
+    setHits([]);
+    setSearchNote(null);
+  }, []);
+
   useEffect(() => {
     const q = query.trim();
     // A postal code is only worth sending once it is complete; anything else
@@ -82,6 +97,7 @@ export default function Home() {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
         const json = (await res.json()) as { results: AddressHit[]; error?: string };
         setHits(json.results ?? []);
+        setActive(0);
         setSearchNote(
           json.error
             ? "OneMap is not answering right now — try again in a moment."
@@ -91,23 +107,12 @@ export default function Home() {
         );
       } catch {
         setHits([]);
+        setActive(0);
         setSearchNote("Could not reach the address lookup.");
       }
     }, delay);
     return () => clearTimeout(timer);
   }, [query]);
-
-  const choose = useCallback((h: AddressHit) => {
-    setPoint({ lat: h.lat, lng: h.lng });
-    setLabel(h.building ?? withoutPostal(h.address));
-    setPostal(h.postal);
-    setAddress({ blockNo: h.blockNo, street: h.road, postal: h.postal });
-    setFace(undefined);
-    setWindowAt(null);
-    setQuery("");
-    setHits([]);
-    setSearchNote(null);
-  }, []);
 
   const goHome = useCallback(() => {
     setPoint(START.point);
@@ -120,6 +125,31 @@ export default function Home() {
     setHits([]);
     setSearchNote(null);
   }, []);
+
+  /**
+   * The button beside the box. With something typed it loads that address —
+   * the suggestion list is there to be read, not to be clicked through — and
+   * it asks OneMap itself rather than waiting on the list, so a code typed and
+   * submitted inside the debounce still goes somewhere.
+   */
+  const submit = useCallback(async () => {
+    const q = query.trim();
+    if (!q) return goHome();
+    if (hits.length > 0) return choose(hits[active] ?? hits[0]);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const json = (await res.json()) as { results: AddressHit[]; error?: string };
+      const hit = (json.results ?? [])[0];
+      if (hit) return choose(hit);
+      setSearchNote(
+        json.error
+          ? "OneMap is not answering right now — try again in a moment."
+          : `Nothing found for "${q}".`,
+      );
+    } catch {
+      setSearchNote("Could not reach the address lookup.");
+    }
+  }, [query, hits, active, choose, goHome]);
 
   const host = result?.host ?? null;
   const storeys = host?.levels ?? (host ? Math.round((host.height - 4) / 3) : null);
@@ -191,22 +221,40 @@ export default function Home() {
       </p>
 
       <div className="search-row">
-      <div className="search">
+      {/* A list that only closes when it is chosen from is a list that sits over
+          the page. Leaving the field at all — clicking away, or tabbing past the
+          last result — puts it away; Escape does too, without moving focus. */}
+      <div className="search" onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHits([]);
+      }}>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            // A postal code is unambiguous, so Enter should just go there.
-            if (e.key === "Enter" && hits.length > 0) choose(hits[0]);
+            if (e.key === "Escape") { setHits([]); return; }
+            // Enter is the button: it works whether or not the list is up yet.
+            if (e.key === "Enter") { submit(); return; }
+            if (hits.length === 0) return;
+            if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+            // The arrows walk the list, so the page must not scroll under them.
+            e.preventDefault();
+            setActive((i) => (i + (e.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length);
           }}
           placeholder="Postal code or address — try 560406"
           inputMode="text"
+          role="combobox"
+          aria-expanded={hits.length > 0}
+          aria-controls="search-results"
+          aria-activedescendant={hits.length > 0 ? `hit-${active}` : undefined}
+          aria-autocomplete="list"
           aria-label="Search by postal code or address"
         />
         {hits.length > 0 && (
-          <div className="results">
-            {hits.map((h) => (
-              <button key={`${h.address}-${h.lat}`} onClick={() => choose(h)}>
+          <div className="results" id="search-results" role="listbox">
+            {hits.map((h, i) => (
+              <button key={`${h.address}-${h.lat}`} id={`hit-${i}`} type="button"
+                role="option" aria-selected={i === active}
+                onMouseEnter={() => setActive(i)} onClick={() => choose(h)}>
                 <div className="addr">{h.building ?? withoutPostal(h.address)}</div>
                 <div className="sub">
                   {h.postal && <span className="postal">{h.postal}</span>}
@@ -218,7 +266,7 @@ export default function Home() {
         )}
         {searchNote && <div className="search-note">{searchNote}</div>}
       </div>
-        <button className="go-home" type="button" onClick={goHome}>Go home</button>
+        <button className="go-home" type="button" onClick={submit}>Go home</button>
       </div>
 
       <div className="summary-grid">
@@ -284,7 +332,7 @@ export default function Home() {
             )}
           </section>
 
-          {result ? <ScoreCard result={result} /> : <section className="card verdict-loading"><h2>Verdict</h2><p className="hint">Working out the daylight, afternoon warmth and openness of this unit.</p></section>}
+          {result ? <ScoreCard result={result} busy={busy} /> : <section className="card verdict-loading"><h2>Verdict</h2><p className="hint">Working out the daylight, afternoon warmth and openness of this unit.</p></section>}
         </div>
 
           <section className="card plan-card">
@@ -319,16 +367,24 @@ export default function Home() {
                   {busy ? (
                     <span className="working">Working out the answer for this window…</span>
                   ) : (
-                    <>Drag the red dot to your unit. The red fan shows the view from that window. Dashed rooflines are estimated heights.</>
+                    <>Drag the orange dot to your unit. The blue fan shows the view from that window, and the red line is the sun. Dashed rooflines are estimated heights.</>
                   )}
                 </p>
+                {result.ground.length > 0 && (
+                  <p className="plan-key">
+                    <span><i style={{ background: "var(--plan-water)" }} />Water</span>
+                    <span><i style={{ background: "var(--plan-green)" }} />Park or open space</span>
+                    <span><i style={{ background: "var(--plan-road)" }} />Road reserve</span>
+                    <span>— the Master Plan will not let a building rise on these.</span>
+                  </p>
+                )}
               </>
             )}
           </section>
       </div>
 
       {result && (
-        <details className="workings">
+        <details className="workings stale" data-busy={busy || undefined}>
           <summary>Show the workings</summary>
 
           <div className="figs">
@@ -362,6 +418,20 @@ export default function Home() {
                   <Stat k="Heat on this wall" v={result.sun.facadeIrradiationKwh.toFixed(2)} u="kWh/m²/day" />
                   <Stat k="Heat after 2pm" v={result.sun.afternoonIrradiationKwh.toFixed(2)} u="kWh/m²/day" />
                 </div>
+                <details className="nerd-more">
+                  <summary>Nerd out even more</summary>
+                  <div className="stats">
+                    <Stat k="Sun above the skyline" v={result.sun.meanDirectHoursPerDay.toFixed(1)} u="h/day, any direction" />
+                    <Stat k="Sunniest month" v={MONTH_NAMES[extremeMonth(result.sun.monthlyFacadeHours, "max")]}
+                      u={`${Math.max(...result.sun.monthlyFacadeHours).toFixed(1)} h/day`} />
+                    <Stat k="Dimmest month" v={MONTH_NAMES[extremeMonth(result.sun.monthlyFacadeHours, "min")]}
+                      u={`${Math.min(...result.sun.monthlyFacadeHours).toFixed(1)} h/day`} />
+                    <Stat k="Afternoon share of heat"
+                      v={result.sun.facadeIrradiationKwh > 0
+                        ? `${Math.round((result.sun.afternoonIrradiationKwh / result.sun.facadeIrradiationKwh) * 100)}%`
+                        : "—"} />
+                  </div>
+                </details>
               </details>
               <details className="measurement-group">
                 <summary>Nerd out: sky and view</summary>
@@ -372,6 +442,18 @@ export default function Home() {
                     v={Number.isFinite(result.blockage.distanceAhead) ? `${Math.round(result.blockage.distanceAhead)} m` : "clear"}
                     u={result.blockage.elevationAhead > 0.5 ? `${Math.round(result.blockage.elevationAhead)}° up` : undefined} />
                 </div>
+                <details className="nerd-more">
+                  <summary>Nerd out even more</summary>
+                  <div className="stats">
+                    <Stat k="Sky view factor" v={`${Math.round(result.blockage.skyViewFactor * 100)}%`} u="whole dome" />
+                    <Stat k="Sky in front" v={`${Math.round(result.blockage.facadeSkyViewFactor * 100)}%`} u="the 180° you face" />
+                    <Stat k="Blocked above 20°" v={`${Math.round(result.blockage.heavilyBlockedShare * 100)}%`} u="of that half" />
+                    <Stat k="Window faces" v={`${Math.round(result.viewpoint.facing)}°`} u={compassName(result.viewpoint.facing)} />
+                    <Stat k="Eye height" v={result.viewpoint.z.toFixed(1)} u="m above ground" />
+                    <Stat k="Buildings considered" v={String(result.confidence.buildingsConsidered)}
+                      u={`${Math.round(result.confidence.blockerHeightConfidence * 100)}% real heights`} />
+                  </div>
+                </details>
               </details>
             </div>
           </section>
@@ -391,7 +473,7 @@ export default function Home() {
             </section>
           )}
 
-          {result.outlook && (result.outlook.knownDegrees > 0 || result.outlook.durableForegroundDegrees > 0) && <OutlookStory result={result} />}
+          {result.outlook && <OutlookStory result={result} />}
 
           {result.noise && (
             <section className="card">
@@ -404,10 +486,15 @@ export default function Home() {
               {result.noise.sources.length > 0 ? (
                 <div className="noise-groups">
                   {groupNoiseSources(result.noise.sources).map((group) => (
-                    <div className="noise-group" key={`${group.use}-${group.status}`}>
-                      <strong>{group.count > 1 ? `${group.count} × ` : ""}{plainUse(group.use)}</strong>
+                    <div className="noise-group" key={`${group.name ?? group.use}-${group.status}`}>
+                      <strong>
+                        {/* A count in front of a name reads as several of them;
+                            one estate mapped as six parcels is still one estate. */}
+                        {!group.name && group.count > 1 ? `${group.count} × ` : ""}
+                        {group.name ?? plainUse(group.use)}
+                      </strong>
                       <span>{group.closest} m {relative(group.bearing, result.viewpoint.facing)}</span>
-                      <small>{group.status}</small>
+                      <small>{group.name ? `${plainUse(group.use)} · ${group.status}` : group.status}</small>
                     </div>
                   ))}
                 </div>
@@ -437,14 +524,6 @@ function clockLabel(minutes: number) {
   return `${h}:${String(minutes % 60).padStart(2, "0")}${h24 < 12 ? "am" : "pm"}`;
 }
 
-/** Where a building's height came from, said plainly. */
-const HEIGHT_SOURCE = {
-  "hdb-register": "HDB register",
-  "height-tag": "measured",
-  "levels-tag": "from storeys",
-  inferred: "estimated",
-} as const;
-
 /** One finding, read as a sentence with its number on the end. */
 function Datum({ what, where, amount, note }: { what: string; where: string; amount: string; note?: string }) {
   return (
@@ -461,11 +540,21 @@ function Datum({ what, where, amount, note }: { what: string; where: string; amo
   );
 }
 
-/** A visual first answer to the question of whether an outlook is permanent. */
+/**
+ * One number for whether this outlook is permanent, and one sentence for why.
+ *
+ * The share is taken over the view that is still open, not over the whole 180:
+ * a window with a block already across it has nothing left to lose, and marking
+ * that direction down a second time would answer a question about the future
+ * with a fact about the present. The three shares behind the number stay in the
+ * detail, because a reader wants to know whether the view holds — not how many
+ * degrees of it the Master Plan declines to put a ceiling on.
+ */
 function OutlookStory({ result }: { result: AnalysisResult }) {
   const outlook = result.outlook!;
-  const water = outlook.durableForegrounds.find((foreground) => foreground.label === "Water");
-  const protectedPct = Math.round((outlook.protectedDegrees / 181) * 100);
+  const open = outlook.protectedDegrees + outlook.atRiskDegrees + outlook.unknownDegrees;
+  const secured = open === 0 ? 0 : Math.round((outlook.protectedDegrees / open) * 100);
+  const widest = outlook.protectors[0];
   const shown = outlook.zones
     .filter((z) => !outlook.protectors.some((p) => sameThing(p.label, z.use)))
     .slice(0, 4);
@@ -473,20 +562,21 @@ function OutlookStory({ result }: { result: AnalysisResult }) {
   return (
     <section className="card outlook-card">
       <h2>Will the view last?</h2>
+      <div className="headline">
+        <span className="n" style={{ color: lastingBand(outlook, open, secured) }}>
+          {open === 0 ? "—" : secured}
+        </span>
+        <span className="of">out of 100<br />stays open</span>
+      </div>
       <div className="outlook-story">
-        <div className="outlook-status">{water ? "Water ahead" : "No lasting foreground"}</div>
-        <p>
-          {water
-            ? `Water begins about ${water.distance} m away. It keeps this part of the foreground open, although buildings on the far shore could still change the skyline.`
-            : "There is no water or other durable open foreground in this view. Nearby land does not have enough published height data to guarantee the skyline."}
-        </p>
+        <p>{whyItLasts(outlook, open, secured, widest)}</p>
       </div>
       <details className="outlook-details">
         <summary>See the planning detail</summary>
         <p className="hint outlook-explainer">
-          {protectedPct > 0
-            ? `${protectedPct}% of the full forward view has a documented low-height corridor all the way to 200 m.`
-            : "No part of the full 200 m skyline corridor has a documented low-height limit."}
+          {open === 0
+            ? `Buildings already stand across the whole of this outlook within ${outlook.reachM} m.`
+            : `Of the view still open, ${secured}% is capped all the way out to ${outlook.reachM} m, ${Math.round((outlook.atRiskDegrees / open) * 100)}% carries a ceiling high enough to build into it, and ${Math.round((outlook.unknownDegrees / open) * 100)}% has no published ceiling either way.`}
         </p>
         {outlook.protectors.map((p) => (
           <Datum
@@ -513,13 +603,20 @@ function OutlookStory({ result }: { result: AnalysisResult }) {
 
 type NoiseSource = NonNullable<AnalysisResult["noise"]>["sources"][number];
 
+/**
+ * Parcels rolled up into things a reader would recognise.
+ *
+ * Named ground groups by its name, so the six parcels of one industrial estate
+ * come back as that estate rather than as "3 × Light industry". Unnamed ground
+ * still groups by zoning, because that is genuinely all that is known about it.
+ */
 function groupNoiseSources(sources: NoiseSource[]) {
   const groups = new Map<string, {
-    use: string; count: number; closest: number; bearing: number; status: string;
+    use: string; name: string | null; count: number; closest: number; bearing: number; status: string;
   }>();
   for (const source of sources) {
     const status = source.shielded ? "blocked by buildings" : source.ahead ? "in view" : "behind the block";
-    const key = `${source.use}|${status}`;
+    const key = `${source.name ?? source.use}|${status}`;
     const group = groups.get(key);
     if (group) {
       group.count++;
@@ -528,7 +625,10 @@ function groupNoiseSources(sources: NoiseSource[]) {
         group.bearing = source.bearing;
       }
     } else {
-      groups.set(key, { use: source.use, count: 1, closest: source.distance, bearing: source.bearing, status });
+      groups.set(key, {
+        use: source.use, name: source.name, count: 1,
+        closest: source.distance, bearing: source.bearing, status,
+      });
     }
   }
   return [...groups.values()].sort((a, b) => a.closest - b.closest);
@@ -554,6 +654,58 @@ function relative(bearing: number, facing: number) {
 }
 
 /** Degrees of a 181° outlook, as a share anyone can picture. */
+/**
+ * What colour a low score deserves.
+ *
+ * Not the verdict card's scale, deliberately. A low share here means one of two
+ * opposite things: land that is allowed to be built into, or land nobody has
+ * published a height for. Painting the second one red would say a view is going
+ * to be lost when the honest answer is that nobody knows, so the unknown case
+ * is left the colour of ordinary text and the sentence beside it does the work.
+ */
+function lastingBand(
+  outlook: NonNullable<AnalysisResult["outlook"]>,
+  open: number,
+  secured: number,
+) {
+  if (open === 0) return "var(--muted)";
+  if (secured >= 70) return "var(--good)";
+  if (outlook.atRiskDegrees > outlook.protectedDegrees) return "var(--bad)";
+  if (secured >= 45) return "var(--warn)";
+  return "var(--muted)";
+}
+
+/**
+ * Why the number is what it is, in one sentence.
+ *
+ * One sentence is the whole design. A reader who has just been handed a score
+ * wants to know what to do with it, and the honest distinction — land that may
+ * be built into, against land nobody has published a height for — survives the
+ * difference between "could change" and "is allowed to". The arithmetic behind
+ * it is a click away for anyone who wants to argue with it.
+ */
+function whyItLasts(
+  outlook: NonNullable<AnalysisResult["outlook"]>,
+  open: number,
+  secured: number,
+  widest: { label: string; distance: number } | undefined,
+) {
+  // No widest protector means nothing at all is capped, which is a different
+  // sentence rather than the same one with a clause missing.
+  const only = widest
+    ? `; only the ${widest.label} ${widest.distance} m out is guaranteed`
+    : ", and none of it is guaranteed";
+
+  if (open === 0) return "Buildings already close this view — nothing left here to lose.";
+  if (secured >= 50) {
+    return `Most of this view is over ground nothing can be built on${widest ? ` — the ${widest.label}, ${widest.distance} m out` : ""}.`;
+  }
+  if (outlook.unknownDegrees >= outlook.atRiskDegrees) {
+    return `No published height limit covers most of this view${only}.`;
+  }
+  return `Most of this view may legally be built up into${only}.`;
+}
+
 function share(degrees: number) {
   const pct = Math.round((degrees / 181) * 100);
   return pct < 1 ? "a sliver" : `${pct}%`;
@@ -616,14 +768,6 @@ function sentence(label: string) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-/** A plot ratio is a number, or one of the plan's codes for having none. */
-function ratioLabel(gpr: string) {
-  if (/^[\d.]+$/.test(gpr)) return gpr;
-  if (gpr === "EVA") return "not published";
-  if (gpr === "SDP") return "detailed planning";
-  return gpr || "—";
-}
-
 /** OneMap ends every address with the postal code, which is shown beside it. */
 function withoutPostal(address: string) {
   return address.replace(/\s*singapore\s*\d{6}\s*$/i, "");
@@ -655,10 +799,12 @@ function groupSides(faces: { facing: number; length: number }[]): Side[] {
   return groups.filter((g) => g.length >= 15).slice(0, 4);
 }
 
-/** How far the block is turned from the cardinal grid, in degrees. */
-function gridOffset(facing: number) {
-  const off = ((facing % 90) + 90) % 90;
-  return Math.round(off > 45 ? 90 - off : off);
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Index of the brightest or dimmest month on this wall. */
+function extremeMonth(hours: number[], which: "max" | "min") {
+  const target = which === "max" ? Math.max(...hours) : Math.min(...hours);
+  return hours.indexOf(target);
 }
 
 function Stat({ k, v, u }: { k: string; v: string; u?: string }) {

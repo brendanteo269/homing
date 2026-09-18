@@ -22,6 +22,24 @@ export interface OutlookMetrics {
   /** Degrees of the window's 180 that look over ground which cannot rise into view. */
   protectedDegrees: number;
   /**
+   * Degrees where the plan publishes a ceiling tall enough that a new building
+   * could rise into this view.
+   */
+  atRiskDegrees: number;
+  /**
+   * Degrees where the plan publishes no ceiling at all, so nothing can be
+   * promised either way. Most of Singapore is zoned by plot ratio, which sets
+   * floor area and not height, so this is the ordinary case rather than a gap
+   * in the data — and it is counted rather than folded in with the risk.
+   */
+  unknownDegrees: number;
+  /**
+   * Degrees a building already closes. There is no outlook here to keep or
+   * lose, so these sit outside the other three rather than counting against
+   * them: openness has already charged the window for them once.
+   */
+  closedDegrees: number;
+  /**
    * Visible directions where water starts before any land that could grow into
    * the view. This preserves the foreground, but not necessarily the distant
    * skyline on the far shore.
@@ -86,6 +104,20 @@ const DURABLE_FOREGROUND: Record<string, string> = {
   "BEACH AREA": "Water",
 };
 
+/**
+ * The ground the drawing shades, which is exactly the ground this file counts
+ * as capped. Sharing one table is the point: a reader who sees water, greenery
+ * and road reserve on the plan is looking at the land the verdict is made of,
+ * and the two cannot drift apart.
+ */
+export type GroundKind = "water" | "open" | "road";
+
+export function groundKind(use: string): GroundKind | null {
+  if (DURABLE_FOREGROUND[use]) return "water";
+  if (use === "ROAD") return "road";
+  return OPEN_LAND_CEILING_M[use] === undefined ? null : "open";
+}
+
 /** A grid over the local metres, so a ray does not test every polygon it passes. */
 const GRID_M = 60;
 
@@ -112,6 +144,9 @@ export function computeOutlook(
   const onHomeLand = (px: number, py: number) => home.some((zn) => pointInPolygon(px, py, zn.ring));
 
   let protectedDegrees = 0;
+  let atRiskDegrees = 0;
+  let unknownDegrees = 0;
+  let closedDegrees = 0;
   let durableForegroundDegrees = 0;
   let knownDegrees = 0;
   const protectors = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
@@ -124,7 +159,10 @@ export function computeOutlook(
     const cos = Math.cos(rad(azimuth));
 
     let known = false;
-    let breached = false;
+    // Every direction ends as exactly one of these, so the three shares and the
+    // already-closed count add up to the whole outlook and none of them is the
+    // silent remainder of the others.
+    let outcome: "secured" | "at-risk" | "unknown" = "secured";
     let credit: { label: string; distance: number } | null = null;
     let durableForeground: { label: string; distance: number } | null = null;
     let firstZone: { use: string; gpr: string; distance: number } | null = null;
@@ -152,14 +190,14 @@ export function computeOutlook(
       if (!ceiling) {
         // Ground with no published ceiling could hold anything, so the
         // question stops being answerable here.
-        breached = true;
+        outcome = "unknown";
         break;
       }
 
       known = true;
       const elevation = (Math.atan2(ceiling.height - z, d) * 180) / Math.PI;
       if (elevation >= CLEAR_DEG) {
-        breached = true;
+        outcome = "at-risk";
         break;
       }
       if (!credit || d < credit.distance) credit = { label: ceiling.what, distance: d };
@@ -176,13 +214,23 @@ export function computeOutlook(
       } else zones.set(key, { arcDegrees: 1, distance: firstZone.distance, bearing: azimuth });
     }
 
-    if (!known) continue;
-    knownDegrees++;
+    // Something already standing in the way makes the question moot: that
+    // direction is closed, and whether it could close further is not what
+    // protection means.
+    if (builtHorizonAt(azimuth) >= CLEAR_DEG) {
+      closedDegrees++;
+      continue;
+    }
+
+    // A ray that never left the home's own land learned nothing, whatever it
+    // did not run into.
+    if (!known) outcome = "unknown";
+    else knownDegrees++;
 
     // A waterbody reached before the first uncertain or buildable parcel is a
     // durable part of the foreground. Existing buildings can still hide it,
     // in which case it should not be credited to this particular window.
-    if (durableForeground && builtHorizonAt(azimuth) < CLEAR_DEG) {
+    if (durableForeground) {
       durableForegroundDegrees++;
       const seen = durableForegrounds.get(durableForeground.label);
       if (seen) {
@@ -198,11 +246,14 @@ export function computeOutlook(
       }
     }
 
-    if (breached) continue;
-    // Something already standing in the way makes the question moot: that
-    // direction is closed, and whether it could close further is not what
-    // protection means.
-    if (builtHorizonAt(azimuth) >= CLEAR_DEG) continue;
+    if (outcome === "unknown") {
+      unknownDegrees++;
+      continue;
+    }
+    if (outcome === "at-risk") {
+      atRiskDegrees++;
+      continue;
+    }
 
     protectedDegrees++;
     if (credit) {
@@ -217,6 +268,9 @@ export function computeOutlook(
 
   return {
     protectedDegrees,
+    atRiskDegrees,
+    unknownDegrees,
+    closedDegrees,
     durableForegroundDegrees,
     knownDegrees,
     reachM: REACH_M,

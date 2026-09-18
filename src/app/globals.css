@@ -1,50 +1,61 @@
 /*
- * One committed light theme, built from a five-colour scheme: deep teal
- * #244855, vermilion #E64833, brown #874F41, sage #90AEAD and cream #FBE9D0.
- * The subject is a building and the sun on it, so the page is the paper an
- * architect would draw that on: the cream is the paper, the model is picked out
- * in teal, and the vermilion is kept for sunlight and nothing else.
+ * One committed light theme, built from a four-colour olive scheme: olive
+ * #636B2F, sage #BAC095, sunlit lime #D4DE95 and near-black olive #3D4127.
+ * Split 60/30/10 — 60% is paper, tints of the sage; 30% is the drawing, the
+ * dark olive ink and the sage massing it is built from; 10% is sunlight, the
+ * olive/lime pair and nothing else in the interface.
  *
- * Contrast against --panel, measured: ink 9.6, muted 6.5, faint 5.6. The
+ * Contrast against --panel, measured: ink 10.2, muted 6.8, faint 5.9. The
  * quietest tier still clears WCAG AA on all three surfaces.
  */
 :root {
-  --bg: #fbe9d0;
-  --panel: #fffcf7;
-  --raised: #fdf4e6;
-  --line: #eddfc8;
-  --line-bright: #ddc9aa;
+  /* The 60%: paper. Sage taken up to near-white so the drawing sits on it. */
+  --bg: #edefe1;
+  --panel: #fafbf4;
+  --raised: #f5f7ea;
+  --line: #e0e3cd;
+  --line-bright: #c8cdac;
 
-  --ink: #244855;
-  --muted: #4c6068;
-  --faint: #56696f;
+  /* The 30%: ink and structure. */
+  --ink: #3d4127;
+  --muted: #55593a;
+  --faint: #5f6443;
   /* Text sitting on a surface filled with --ink. */
-  --on-ink: #fbe9d0;
+  --on-ink: #edefe1;
 
-  /* The 10%: sunlight. Nothing else in the interface is allowed to be vermilion. */
-  --sun: #e64833;
-  --sun-quiet: #f3b9ac;
-  /* The 20%: everything that is sky, shade or structure. */
-  --steel: #2e6e80;
-  --violet: #874f41;
-  /* The sky dome lives or dies on these two reading apart at a glance: sage
-     sky against brown-tinted mass, 1.54:1 apart in luminance. */
-  --sky-open: #cfe3e0;
-  --mass: #c9b195;
-  --mass-lit: #dbc7ae;
-  --host: #244855;
+  /* The 10%: the interface's own accent — slider handle, focus ring, the
+     working pulse. Olive, because the page is olive. */
+  --sun: #636b2f;
+  --sun-quiet: #d4de95;
+  /* Sun falling on a wall is drawn in sunlight's own colours, not the page's:
+     morning amber warming to afternoon orange. Both ramps stop short of full
+     strength so the reading printed in each cell stays legible. */
+  --sun-early: #f2a93b;
+  --sun-late: #e2762b;
+  /* The sky dome lives or dies on these two reading apart at a glance: open
+     sky is blue, and whatever stands in it is dark green. */
+  --sky-open: #a8c9e6;
+  --mass: #3b5236;
+  --host: #3d4127;
 
-  --good: #1f6b52;
-  --warn: #874f41;
-  --bad: #b93622;
+  --good: #4a6b2f;
+  --warn: #7a6a3c;
+  --bad: #8c3a28;
 
   /*
    * The plan is a canvas, so it cannot read these itself — PlanMap looks every
-   * one of them up. Cards on cream paper: the neighbours are pale, whatever
-   * blocks the view is picked out in brown, and your own block is solid teal.
+   * one of them up. The drawing keeps its own cream-and-teal scheme: the page
+   * is the sheet, the plan is the drawing pinned to it, and the two are not
+   * required to be the same colour. Neighbours are pale, whatever blocks the
+   * view is picked out in brown, and your own block is solid teal.
    */
   --plan-ground: #f6e6cd;
   --plan-grid: rgba(36, 72, 85, 0.07);
+  /* The Master Plan's ground. Quiet enough that the massing still reads as the
+     subject, distinct enough to tell water from grass from tarmac at a glance. */
+  --plan-water: #cadfe2;
+  --plan-green: #d9e2d1;
+  --plan-road: #eee0c4;
   --plan-shadow: rgba(135, 79, 65, 0.16);
   --plan-roof: #eddcc2;
   --plan-wall-lit: #ddc9ab;
@@ -57,9 +68,13 @@
   --plan-host-wall: #244855;
   --plan-host-wall-dark: #1a353f;
   --plan-host-label: #fbe9d0;
-  --plan-fan-fill: rgba(230, 72, 51, 0.14);
-  --plan-fan-line: rgba(230, 72, 51, 0.5);
-  --plan-ray: rgba(230, 72, 51, 0.62);
+  /* Three jobs, three colours, so the drawing never asks which line is which:
+     the view fan is a warm blue, the window marker and its dropline are orange,
+     and the sun's own ray is red and nothing else is. */
+  --plan-fan-fill: rgba(63, 109, 168, 0.16);
+  --plan-fan-line: rgba(63, 109, 168, 0.6);
+  --plan-ray: #e07a2c;
+  --plan-sun: #d8321e;
 
   --r: 4px;
   --mono: var(--font-mono), ui-monospace, Menlo, monospace;
@@ -86,7 +101,7 @@ button { font: inherit; color: inherit; }
 
 /* Every number in the interface is a measurement; none of them should reflow
    as they tick. */
-.num, .stat .v, .bar b, table td, .postal, .control label span:last-child {
+.num, .stat .v, .bar b, .postal, .control label span:last-child {
   font-variant-numeric: tabular-nums;
 }
 
@@ -117,14 +132,19 @@ button { font: inherit; color: inherit; }
   position: absolute; z-index: 20; top: calc(100% + 5px); left: 0; right: 0;
   background: var(--raised); border: 1px solid var(--line-bright);
   border-radius: var(--r); overflow: hidden auto; max-height: 300px;
-  box-shadow: 0 10px 28px rgba(36, 72, 85, 0.16);
+  box-shadow: 0 10px 28px rgba(61, 65, 39, 0.16);
 }
 .results button {
   display: block; width: 100%; text-align: left; padding: 9px 12px;
   background: none; border: 0; border-bottom: 1px solid var(--line); cursor: pointer;
 }
 .results button:last-child { border-bottom: 0; }
-.results button:hover, .results button:focus-visible { background: var(--bg); outline: none; }
+.results button:hover { background: var(--bg); }
+/* A background shift from --raised to --bg is 1.07:1 — invisible as a focus
+   indicator. Focus gets a ring; hover keeps the tint. */
+.results button:focus-visible {
+  background: var(--bg); outline: 2px solid var(--sun); outline-offset: -2px;
+}
 .results .addr { font-size: 13px; }
 .results .sub { font-size: 11px; color: var(--faint); margin-top: 1px; }
 .search-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
@@ -132,7 +152,7 @@ button { font: inherit; color: inherit; }
   padding: 10px 13px; background: var(--ink); color: var(--on-ink); border: 1px solid var(--ink);
   border-radius: var(--r); cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, border-color 160ms ease;
 }
-.go-home:hover { background: #173640; border-color: #173640; }
+.go-home:hover { background: #2b2e1b; border-color: #2b2e1b; }
 .go-home:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
 
 .postal {
@@ -154,17 +174,19 @@ button { font: inherit; color: inherit; }
 }
 .card + .card { margin-top: 12px; }
 .card > h2 {
-  font-family: var(--mono); font-size: 12px; text-transform: uppercase;
-  letter-spacing: 0.1em; color: var(--muted); font-weight: 500; margin-bottom: 14px;
+  font-family: var(--sans); font-size: 18px;
+  letter-spacing: -0.015em; color: var(--ink); font-weight: 700; margin-bottom: 14px;
 }
-/* The plan carries its own frame; it should not sit in a lit box as well. */
-.card.plan-card { padding: 0; overflow: hidden; background: var(--plan-ground); }
+/* The plan carries its own frame; it should not sit in a lit box as well.
+   The card is page furniture and stays on the page's palette — only the canvas
+   inside it holds the drawing's own cream ground. */
+.card.plan-card { padding: 0; overflow: hidden; background: var(--panel); }
 .card.plan-card > h2 {
   padding: 14px 16px 0; margin-bottom: 10px;
 }
 .summary-grid .card { padding: 16px; }
 .summary-grid .card + .card { margin-top: 0; }
-.summary-grid .card > h2 { font-size: 12px; margin-bottom: 14px; }
+.summary-grid .card > h2 { font-size: 18px; margin-bottom: 14px; }
 .summary-grid .plan-card { margin-top: 0; padding: 0; }
 .summary-grid .plan-card > h2 { padding: 14px 16px 0; margin-bottom: 10px; }
 .verdict-loading { display: flex; flex-direction: column; justify-content: center; min-height: 180px; }
@@ -190,7 +212,7 @@ button { font: inherit; color: inherit; }
 .control label span + span { color: var(--ink); font-family: var(--mono); font-size: 12px; }
 
 /* The track stays neutral and only the handle takes the accent — a full
-   vermilion bar across a panel outshouts the drawing it is there to scrub. */
+   olive bar across a panel outshouts the drawing it is there to scrub. */
 input[type="range"] {
   width: 100%; height: 18px; margin: 0; background: none;
   -webkit-appearance: none; appearance: none; cursor: ew-resize;
@@ -236,9 +258,11 @@ input[type="range"]::-moz-range-thumb {
 }
 .sides button:hover { border-color: var(--faint); }
 .sides button b { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
-.sides button span { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.sides button span { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .sides button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
-.sides button[aria-pressed="true"] span { color: rgba(248, 247, 244, 0.72); }
+/* Was 72% of --on-ink over --ink: 3.2:1 at 10.5px, under AA. A solid tint of
+   the same paper reads as quieter without dropping below 4.5:1. */
+.sides button[aria-pressed="true"] span { color: #bcc0a8; }
 
 /* ---------- verdict ---------- */
 .headline { display: flex; align-items: baseline; gap: 10px; }
@@ -292,6 +316,15 @@ canvas { display: block; width: 100%; height: auto; }
 @media (pointer: coarse) {
   .plan-controls button { width: 44px; height: 44px; }
 }
+/* Six 44px buttons overlaid on a canvas only 210px tall cover a fifth of the
+   drawing and most of its width. Below 560px they step out of the overlay and
+   sit under the plan, where they cost the drawing nothing. */
+@media (max-width: 560px) {
+  .plan-controls {
+    position: static; justify-content: center;
+    padding: 8px 12px 0; gap: 6px;
+  }
+}
 /* The two pairs are different jobs; a gap says so without a divider. */
 .plan-controls button:nth-child(3) { margin-left: 8px; }
 
@@ -326,7 +359,7 @@ canvas { display: block; width: 100%; height: auto; }
 .heatmap-heading, .heatmap-row {
   display: grid; grid-template-columns: 42px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: center;
 }
-.heatmap-heading { font-family: var(--mono); color: var(--faint); font-size: 10px; margin-bottom: 3px; }
+.heatmap-heading { font-family: var(--mono); color: var(--faint); font-size: 11px; margin-bottom: 3px; }
 .heatmap-row > span:first-child { font-size: 12px; color: var(--muted); }
 .sun-cell { display: block; padding: 5px 6px; min-height: 28px; border-radius: 2px; color: var(--ink); font-family: var(--mono); font-size: 11px; text-align: center; }
 .heatmap-key { font-size: 11.5px; color: var(--faint); margin-top: 8px; }
@@ -351,14 +384,19 @@ canvas { display: block; width: 100%; height: auto; }
 .stat .v { font-size: 20px; font-weight: 300; letter-spacing: -0.02em; }
 .stat .v small { font-size: 11px; color: var(--muted); font-weight: 400; letter-spacing: 0; }
 .compact-hint { margin-top: -6px; }
-.measurement-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+/* A closed group stretched to the height of its open neighbour reads as a
+   panel that failed to fill. Each keeps its own height. */
+.measurement-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 8px; margin-top: 14px; }
 .measurement-group { border: 1px solid var(--line-bright); border-radius: var(--r); padding: 0 12px; }
 .measurement-group summary { cursor: pointer; padding: 10px 0; color: var(--ink); font-size: 13px; font-weight: 550; }
 .measurement-group[open] summary { border-bottom: 1px solid var(--line); }
 .measurement-group .stats { padding-bottom: 4px; }
+/* The second rung: a quieter, smaller toggle so the first level stays the
+   headline and this reads as an aside inside it. */
+.nerd-more { border-top: 1px solid var(--line); margin-bottom: 4px; }
+.nerd-more summary { cursor: pointer; padding: 8px 0; color: var(--muted); font-size: 11.5px; font-weight: 500; letter-spacing: 0.02em; }
+.nerd-more summary:hover { color: var(--ink); }
 @media (max-width: 560px) { .measurement-groups { grid-template-columns: 1fr; } }
-
-table { width: 100%; border-collapse: collapse; font-size: 15px; }
 
 /* A row of findings reads as a sentence with a number on the end, not as a
    spreadsheet. The thing and where it is lead; the qualifier sits under it in
@@ -374,9 +412,13 @@ table { width: 100%; border-collapse: collapse; font-size: 15px; }
 .datum .amount small { display: block; font-size: 12.5px; color: var(--faint); margin-top: 3px; }
 
 /* ---------- outlook and nearby industry ---------- */
-.outlook-story { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; }
-.outlook-status { font-size: 22px; font-weight: 650; letter-spacing: -0.025em; color: var(--good); }
-.outlook-story p { color: var(--muted); max-width: 47ch; }
+.outlook-story p { margin-top: 12px; color: var(--muted); max-width: 52ch; }
+/* The key sits inside the plan card, which has no padding of its own, so it
+   carries the same gutter as the caption above it. */
+.plan-key { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; padding: 0 16px 14px; font-size: 12px; color: var(--muted); }
+.fig-caption:has(+ .plan-key) { padding-bottom: 0; }
+.plan-key span { display: inline-flex; align-items: center; gap: 6px; }
+.plan-key i { width: 11px; height: 11px; border-radius: 2px; border: 1px solid var(--line-bright); }
 .outlook-details { margin-top: 18px; }
 .outlook-details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .outlook-details[open] summary { margin-bottom: 8px; }
@@ -386,14 +428,6 @@ table { width: 100%; border-collapse: collapse; font-size: 15px; }
 .noise-group strong { font-size: 14px; font-weight: 550; }
 .noise-group span { font-size: 13px; color: var(--muted); }
 .noise-group small { font-size: 12px; color: var(--faint); }
-th {
-  text-align: left; font-family: var(--mono); font-weight: 500; color: var(--faint);
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 8px;
-}
-td { padding: 9px 0; border-top: 1px solid var(--line); color: var(--muted); }
-td.name { color: var(--ink); }
-td.right, th.right { text-align: right; }
-.src { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 
 .state { padding: 90px 20px; text-align: center; color: var(--faint); font-size: 13px; line-height: 1.7; }
 .error { color: var(--bad); }
@@ -438,6 +472,45 @@ td.right, th.right { text-align: right; }
   background: currentColor; animation: pulse 1s ease-in-out infinite;
 }
 @keyframes pulse { 50% { opacity: 0.25; } }
+
+
+/* ---------- recomputing ---------- */
+/*
+ * Releasing the storey slider asks a question that takes about a second to
+ * answer, and until this the verdict simply changed under the reader with
+ * nothing to connect the two. Dimming says the numbers on screen are the old
+ * ones. It is a state, not a flourish, so it survives reduced motion — only
+ * the fade between states goes.
+ */
+.stale { transition: opacity 240ms ease; }
+.stale[data-busy="true"] { opacity: 0.5; }
+
+/* ---------- motion ---------- */
+/* One moment: cards arrive rather than appear. Each runs once, on mount. */
+@keyframes settle {
+  from { opacity: 0; transform: translateY(6px); }
+}
+.card { animation: settle 280ms cubic-bezier(0.2, 0, 0, 1) both; }
+
+@keyframes drop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+.results { animation: drop-in 130ms ease-out both; }
+
+/* Disclosure that grows instead of jumping, where the browser supports it.
+   Everywhere else this is inert and the panel opens as it always did. */
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+  details::details-content {
+    block-size: 0; overflow: clip;
+    transition: block-size 260ms cubic-bezier(0.2, 0, 0, 1), content-visibility 260ms allow-discrete;
+  }
+  details[open]::details-content { block-size: auto; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .working::before { animation: none; }
+  .card, .results { animation: none; }
+  .stale, .bar .fill { transition: none; }
+  details::details-content { transition: none; }
 }

@@ -116,11 +116,6 @@ export interface BlockageMetrics {
   }[];
 }
 
-export interface AnalysisExtras {
-  outlook: import("./outlook").OutlookMetrics | null;
-  noise: import("./noise").NoiseMetrics | null;
-}
-
 export interface Confidence {
   buildingsConsidered: number;
   /** Blocks whose storey count came from HDB's register. */
@@ -170,6 +165,13 @@ export interface AnalysisResult {
    * it. Null where the plan dataset has not been built.
    */
   outlook: import("./outlook").OutlookMetrics | null;
+  /**
+   * The capped ground near the window, in local metres, so the plan drawing can
+   * shade it. Only the uses the outlook treats as a ceiling are sent — water,
+   * open land and road reserve — because the rest is ordinary zoned land and
+   * shading it would claim something the plan does not say.
+   */
+  ground: { kind: import("./outlook").GroundKind; ring: [number, number][] }[];
   noise: import("./noise").NoiseMetrics | null;
   confidence: Confidence;
   scores: Scores;

@@ -1,4 +1,5 @@
-import { angleDelta, bearingOf, nearestFacade, pointInPolygon } from "./geo";
+import type { NamedPlace } from "./buildings";
+import { angleDelta, bearingOf, nearestFacade, pointInPolygon, polygonCentroid } from "./geo";
 import type { MasterPlanNearby, Zone } from "./masterplan";
 import type { Horizon, Viewpoint } from "./types";
 
@@ -35,6 +36,12 @@ export interface NoiseMetrics {
   reachM: number;
   sources: {
     use: string;
+    /**
+     * What is actually standing there, where OpenStreetMap names it. Null is
+     * the ordinary case for a substation and the rare one for a depot, and it
+     * means nobody has named it rather than that nothing is there.
+     */
+    name: string | null;
     distance: number;
     bearing: number;
     /** In front of the window rather than behind it. */
@@ -71,7 +78,8 @@ const SOURCE_WEIGHT: Record<string, number> = {
   "MASS RAPID TRANSIT": 0.4,
 };
 
-const REACH_M = 800;
+/** How far out sources are looked for; the name lookup has to cover the same. */
+export const REACH_M = 800;
 /** Distance at which a source counts at its full weight. */
 const REFERENCE_M = 100;
 /** What is left of a source once a building stands between it and the window. */
@@ -83,11 +91,22 @@ const BEHIND = 0.45;
  * produce: a window facing an unshielded heavy-industry estate across the road.
  */
 const EXPOSURE_FLOOR = 2.5;
+/**
+ * How far an outline may reach past itself to claim a parcel.
+ *
+ * The two datasets do not share an edge. A Master Plan parcel runs to the road
+ * centreline and an OpenStreetMap estate stops at its fence, so the same ground
+ * is drawn tens of metres apart in the two, and a name that had to contain the
+ * parcel outright would often miss. One road width of slack closes that gap
+ * without letting the estate over the road lend its name.
+ */
+const NAME_REACH_M = 50;
 
 export function computeNoise(
   viewpoint: Viewpoint,
   horizon: Horizon,
   plan: MasterPlanNearby,
+  places: NamedPlace[] = [],
 ): NoiseMetrics {
   const sources: NoiseMetrics["sources"] = [];
   let exposure = 0;
@@ -111,11 +130,16 @@ export function computeNoise(
     exposure += share;
     sources.push({
       use: zone.use,
+      // Asked about the parcel's middle and about the corner facing the window.
+      // A works estate is best described by its middle; a rail corridor is a
+      // ribbon whose middle can be several hundred metres up the line from the
+      // end this window actually looks at.
+      name: nameOf(zone, viewpoint, places),
+      share,
       distance: Math.round(distance),
       bearing,
       ahead,
       shielded,
-      share,
     });
   }
 
@@ -134,4 +158,41 @@ function approach(viewpoint: Viewpoint, zone: Zone) {
   if (pointInPolygon(x, y, zone.ring)) return { distance: 0, bearing: viewpoint.facing };
   const wall = nearestFacade(x, y, zone.ring);
   return { distance: wall.distance, bearing: bearingOf(wall.x - x, wall.y - y) };
+}
+
+/**
+ * What is standing on a parcel, if anything open has named it.
+ *
+ * The rule under both tests is that a name has to be about this ground, not
+ * merely near it. An outline that covers the parcel names it, whatever its
+ * size, because an estate polygon laid over a dozen parcels is exactly the
+ * thing worth naming; a point names only the parcel it stands in. Anything
+ * short of that leaves the reader with the zoning, which is all that is
+ * actually known — and a category they can go and check beats a place they
+ * will go and look for in the wrong spot.
+ */
+function nameOf(zone: Zone, viewpoint: Viewpoint, places: NamedPlace[]) {
+  // Two probes, because a parcel is not a point. The middle describes a works
+  // estate; the corner facing the window is what matters for a rail corridor,
+  // whose middle can be several hundred metres up the line from this window.
+  const wall = nearestFacade(viewpoint.x, viewpoint.y, zone.ring);
+  const probes: [number, number][] = [polygonCentroid(zone.ring), [wall.x, wall.y]];
+
+  let best: { name: string; rank: number } | null = null;
+  for (const place of places) {
+    if (!place.ring) {
+      // A point: it names the parcel it stands in, and nothing else.
+      if (pointInPolygon(place.x, place.y, zone.ring)) return place.name;
+      continue;
+    }
+
+    for (const [px, py] of probes) {
+      if (pointInPolygon(px, py, place.ring)) return place.name;
+      const gap = nearestFacade(px, py, place.ring).distance;
+      if (gap > NAME_REACH_M) continue;
+      if (!best || gap < best.rank) best = { name: place.name, rank: gap };
+    }
+  }
+
+  return best?.name ?? null;
 }

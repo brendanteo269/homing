@@ -76,8 +76,15 @@ const PINCH_SENSITIVITY = 0.01;
 const SWIVEL_STEP = 15;
 /** A drag across the full width of the plan turns it half way round. */
 const SWIVEL_PER_WIDTH = 180;
-/** How near the window marker a press has to land to take hold of it. */
-const GRAB_RADIUS_PX = 16;
+/**
+ * How near the window marker a press has to land to take hold of it, in real
+ * screen pixels — not in the canvas's own 960-wide space, which is what this
+ * used to be. On a phone the canvas draws at about a third scale, so 16 of its
+ * pixels were 5 of the reader's: an 11 px target for the one control the whole
+ * drawing is built around. A coarse pointer gets the full 44 px.
+ */
+const GRAB_RADIUS_FINE_PX = 16;
+const GRAB_RADIUS_COARSE_PX = 22;
 /**
  * How far the marker drops back when something stands in front of it. Faint
  * enough to read as behind, solid enough to still be found and grabbed — it is
@@ -190,12 +197,17 @@ export default function PlanMap({
   };
 
   /** Is this press on the window marker? Asked of where it is drawn, not of
-   *  where the last analysis put it — during a recompute those differ. */
-  const onMarker = (px: number, py: number) => {
+   *  where the last analysis put it — during a recompute those differ. The
+   *  radius is a screen measurement, so it is converted into canvas space at
+   *  whatever scale the canvas is currently drawn at. */
+  const onMarker = (px: number, py: number, el: HTMLCanvasElement) => {
     if (!host) return false;
+    const coarse = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+    const screenPx = coarse ? GRAB_RADIUS_COARSE_PX : GRAB_RADIUS_FINE_PX;
+    const grab = screenPx * (W / (el.getBoundingClientRect().width || W));
     const v = view(camera);
     const [mx, my] = marker;
-    return Math.hypot(px - v.sx(mx, my), py - v.sy(mx, my, result.viewpoint.z)) <= GRAB_RADIUS_PX;
+    return Math.hypot(px - v.sx(mx, my), py - v.sy(mx, my, result.viewpoint.z)) <= grab;
   };
 
   /**
@@ -226,7 +238,7 @@ export default function PlanMap({
           const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
           // Either the marker is being taken hold of, or the view is being
           // swivelled. The marker is the more specific, so it is asked first.
-          if (!busy && onMarker(px, py)) {
+          if (!busy && onMarker(px, py, e.currentTarget)) {
             setPlacing(snap(px, py));
             return;
           }
@@ -242,7 +254,7 @@ export default function PlanMap({
           if (!d) {
             // Nothing is being dragged, so the cursor's job is to say what could be.
             const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
-            e.currentTarget.style.cursor = !busy && onMarker(px, py) ? "grab" : "";
+            e.currentTarget.style.cursor = !busy && onMarker(px, py, e.currentTarget) ? "grab" : "";
             return;
           }
           // One drag does both: across turns the camera round the block,
@@ -479,6 +491,9 @@ function draw(
     result.origin.lng,
   );
 
+  // The Master Plan's ground goes down first, under everything: it is the
+  // surface the model stands on, not an overlay on top of it.
+  drawGround(ctx, v, c, result);
   drawGrid(ctx, v, c);
 
   // The engine reads 600 m of neighbourhood and the frame holds a slice of it.
@@ -520,27 +535,30 @@ function palette() {
   // the stylesheet and the plan has to change with the theme like everything
   // else. The fallbacks only ever run during server render.
   const fallback = {
-    ground: "#efece6",
-    grid: "rgba(28,31,36,0.05)",
-    shadow: "rgba(74,66,52,0.13)",
-    roof: "#e6e3db",
-    wallLit: "#d2cec4",
-    wallDark: "#bdb9ae",
-    edge: "#b2ada1",
-    hostRoof: "#59626f",
-    hostWall: "#465060",
-    hostWallDark: "#383f4c",
-    hostLabel: "#ffffff",
-    blockerRoof: "#cac5b9",
-    blockerWall: "#bab4a7",
-    blockerWallDark: "#a9a396",
-    fanFill: "rgba(194,98,12,0.13)",
-    fanLine: "rgba(194,98,12,0.5)",
-    ray: "rgba(194,98,12,0.62)",
-    sun: "#c2620c",
-    ink: "#1c1f24",
-    faint: "#656b74",
-    muted: "#545a63",
+    ground: "#f6e6cd",
+    grid: "rgba(36,72,85,0.07)",
+    water: "#cadfe2",
+    green: "#d9e2d1",
+    road: "#eee0c4",
+    shadow: "rgba(135,79,65,0.16)",
+    roof: "#eddcc2",
+    wallLit: "#ddc9ab",
+    wallDark: "#c9b596",
+    edge: "#bda88a",
+    hostRoof: "#2f5a68",
+    hostWall: "#244855",
+    hostWallDark: "#1a353f",
+    hostLabel: "#fbe9d0",
+    blockerRoof: "#cbb098",
+    blockerWall: "#b9997f",
+    blockerWallDark: "#a2836c",
+    fanFill: "rgba(63,109,168,0.16)",
+    fanLine: "rgba(63,109,168,0.6)",
+    ray: "#e07a2c",
+    sun: "#d8321e",
+    ink: "#3d4127",
+    faint: "#5f6443",
+    muted: "#55593a",
     mono: 'ui-monospace, Menlo, monospace',
   };
   if (typeof window === "undefined") return fallback;
@@ -552,6 +570,9 @@ function palette() {
   return {
     ground: token("ground", "ground"),
     grid: token("grid", "grid"),
+    water: token("water", "water"),
+    green: token("green", "green"),
+    road: token("road", "road"),
     shadow: token("shadow", "shadow"),
     roof: token("roof", "roof"),
     wallLit: token("wall-lit", "wallLit"),
@@ -567,7 +588,7 @@ function palette() {
     fanFill: token("fan-fill", "fanFill"),
     fanLine: token("fan-line", "fanLine"),
     ray: token("ray", "ray"),
-    sun: get("--sun", fallback.sun),
+    sun: token("sun", "sun"),
     ink: get("--ink", fallback.ink),
     faint: get("--faint", fallback.faint),
     muted: get("--muted", fallback.muted),
@@ -576,6 +597,34 @@ function palette() {
 }
 
 type Palette = ReturnType<typeof palette>;
+
+/**
+ * Water, open land and road reserve, flat on the ground plane.
+ *
+ * These are the three things the outlook engine will not let a building rise
+ * on, so shading them is the verdict's reasoning drawn rather than written:
+ * the reader sees the reservoir their score is made of. Everything else stays
+ * bare ground, because the plan zones it by floor area and not height and
+ * colouring it in would be a claim about a skyline that nobody has published.
+ */
+function drawGround(
+  ctx: CanvasRenderingContext2D,
+  v: View,
+  c: Palette,
+  result: AnalysisResult,
+) {
+  for (const g of result.ground) {
+    ctx.fillStyle = g.kind === "water" ? c.water : g.kind === "open" ? c.green : c.road;
+    ctx.beginPath();
+    for (let i = 0; i < g.ring.length; i++) {
+      const [gx, gy] = g.ring[i];
+      if (i === 0) ctx.moveTo(v.sx(gx, gy), v.sy(gx, gy, 0));
+      else ctx.lineTo(v.sx(gx, gy), v.sy(gx, gy, 0));
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+}
 
 /** A 50 m ground grid, in perspective with everything else. */
 function drawGrid(ctx: CanvasRenderingContext2D, v: View, c: Palette) {
@@ -1060,6 +1109,9 @@ function drawWindow(
   // being on the near side of a block when it is on the far one.
   const behind = hiddenAt(x, y, z);
   const solid = behind ? HIDDEN_ALPHA : 1;
+  // The dot is the one thing on the plan you are meant to find at a glance, so
+  // being behind a block dims it rather than all but erasing it.
+  const dot = behind ? 0.7 : 1;
 
   // A dropline to the ground, so the storey is something you can see.
   ctx.globalAlpha = solid;
@@ -1097,7 +1149,7 @@ function drawWindow(
       const b = (i + 1) / RAY_SEGMENTS;
       const at = (f: number) => [x + (tx - x) * f, y + (ty - y) * f, z + (tz - z) * f] as const;
       const [mx, my, mz] = at((a + b) / 2);
-      ctx.globalAlpha = (hiddenAt(mx, my, mz) ? HIDDEN_ALPHA : 1) * 0.55;
+      ctx.globalAlpha = (hiddenAt(mx, my, mz) ? HIDDEN_ALPHA : 1) * 0.85;
       const [ax, ay, az] = at(a);
       const [bx, by, bz] = at(b);
       ctx.beginPath();
@@ -1108,10 +1160,10 @@ function drawWindow(
     ctx.setLineDash([]);
   }
 
-  ctx.globalAlpha = solid;
+  ctx.globalAlpha = dot;
   ctx.beginPath();
   ctx.arc(px, py, 4.5, 0, Math.PI * 2);
-  ctx.fillStyle = c.sun;
+  ctx.fillStyle = c.ray;
   ctx.fill();
   ctx.strokeStyle = c.ground;
   ctx.lineWidth = 1.5;

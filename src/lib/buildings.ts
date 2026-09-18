@@ -21,6 +21,11 @@ interface OverpassWay {
   type: string;
   id: number;
   geometry?: { lat: number; lon: number }[];
+  /** A node's own position. */
+  lat?: number;
+  lon?: number;
+  /** Under `out geom`, the extent of a way or relation. */
+  bounds?: { minlat: number; minlon: number; maxlat: number; maxlon: number };
   tags?: Record<string, string>;
 }
 
@@ -361,4 +366,101 @@ async function writeCache(query: string, body: OverpassResponse) {
   } catch {
     // A cold cache costs a few seconds; it is never worth failing the request.
   }
+}
+
+
+/**
+ * A named thing on the ground: an industrial estate, a depot, a substation.
+ *
+ * The Master Plan says a parcel is zoned Business 1, which is what the noise
+ * index is computed from and is also nothing a reader recognises. "Light
+ * industry, 263 m to your right" is a category; "Techplace I" is a place they
+ * can picture, look up, or remember driving past. OpenStreetMap is the only
+ * open source that names these, and it names them unevenly — a depot usually,
+ * a substation rarely — so this supplies a name where there is one and says
+ * nothing where there is not. The zoning is still what the score is made of;
+ * the name only says what is standing there.
+ */
+export interface NamedPlace {
+  name: string;
+  /** Outline in local metres. Null for the ones mapped as a single point. */
+  ring: [number, number][] | null;
+  x: number;
+  y: number;
+}
+
+/**
+ * Only the tags that name the things this app calls loud. Querying every named
+ * feature in the bbox would return every shop and bus stop in the estate and
+ * leave the matching to guess which of them was the works yard.
+ */
+const NAMED_PLACE_FILTERS = [
+  '["landuse"~"^(industrial|depot|port|railway|quarry)$"]',
+  '["power"~"^(substation|plant|generator)$"]',
+  '["man_made"~"^(water_works|wastewater_plant|works|pumping_station)$"]',
+  '["amenity"~"^(bus_station|waste_transfer_station)$"]',
+  '["railway"~"^(depot|yard)$"]',
+  '["building"~"^(industrial|warehouse|factory|depot|train_station)$"]',
+  '["industrial"]',
+];
+
+export async function fetchNamedPlaces(
+  origin: LatLng,
+  radiusM: number,
+  projection: Projection,
+): Promise<NamedPlace[]> {
+  const bbox = boundingBox(origin, radiusM);
+  const box = `(${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)})`;
+  // `out geom`, not `out center`: an industrial estate has to be matched by what
+  // it covers, and a railway by where its track runs. Asking for both modes at
+  // once quietly returns only the centre, which makes every estate a point
+  // somewhere in its own middle and every match a coincidence.
+  const query = `[out:json][timeout:60];(${NAMED_PLACE_FILTERS.map(
+    (f) => `nwr["name"]${f}${box};`,
+  ).join("")});out geom;`;
+
+  // A missing name is a smaller failure than a missing answer. Overpass being
+  // busy must not cost the reader their sun and blockage report as well.
+  let raw;
+  try {
+    raw = await runQuery(query);
+  } catch (err) {
+    console.warn("Could not read named places from Overpass — reporting zoning only.", err);
+    return [];
+  }
+
+  const places: NamedPlace[] = [];
+  for (const el of raw.elements) {
+    const name = el.tags?.name;
+    if (!name) continue;
+
+    // Overpass marks an area by repeating its first node at the end. Anything
+    // that does not close is a line, and a line is not ground: it names nothing
+    // here, so it is dropped rather than quietly treated as a polygon.
+    const points = el.geometry?.map((pt) => projection.toLocal({ lat: pt.lat, lng: pt.lon })) ?? null;
+    const closed =
+      !!points &&
+      points.length >= 4 &&
+      points[0][0] === points[points.length - 1][0] &&
+      points[0][1] === points[points.length - 1][1];
+    if (points && !closed) continue;
+    if (closed) points!.pop();
+
+    // A centre is only the fallback for shapes with no outline: a node, or a
+    // relation, whose members Overpass returns separately.
+    const middle =
+      el.lat !== undefined && el.lon !== undefined
+        ? { lat: el.lat, lng: el.lon }
+        : el.bounds
+          ? {
+              lat: (el.bounds.minlat + el.bounds.maxlat) / 2,
+              lng: (el.bounds.minlon + el.bounds.maxlon) / 2,
+            }
+          : null;
+    const centre = points ? polygonCentroid(points) : middle ? projection.toLocal(middle) : null;
+    if (!centre) continue;
+
+    places.push({ name, ring: points, x: centre[0], y: centre[1] });
+  }
+  return places;
 }

@@ -5,11 +5,13 @@ import type { AnalysisResult } from "@/lib/types";
 const BAND = (v: number) => (v >= 70 ? "var(--good)" : v >= 45 ? "var(--warn)" : "var(--bad)");
 const VERDICT = (v: number) => (v >= 80 ? "Good" : v >= 65 ? "Decent" : v >= 45 ? "Mixed" : "Poor");
 
-export default function ScoreCard({ result }: { result: AnalysisResult }) {
+export default function ScoreCard({ result, busy }: { result: AnalysisResult; busy: boolean }) {
   const { scores } = result;
 
   return (
-    <section className="card">
+    // While a new answer is being worked out these are the previous unit's
+    // numbers. Saying so is the difference between a stale reading and a wrong one.
+    <section className="card stale" data-busy={busy || undefined}>
       <h2>Verdict</h2>
       <div className="headline">
         <span className="n" style={{ color: BAND(scores.overall) }}>{scores.overall}</span>
