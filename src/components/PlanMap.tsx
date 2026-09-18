@@ -91,6 +91,8 @@ const GRAB_RADIUS_COARSE_PX = 22;
  * a control as well as a drawing.
  */
 const HIDDEN_ALPHA = 0.28;
+/** Room a block's name needs to its right before it is put on the left instead. */
+const TIP_REACH_PX = 230;
 /**
  * How far one press of the window buttons slides it along the wall.
  *
@@ -99,6 +101,40 @@ const HIDDEN_ALPHA = 0.28;
  * slab does not take thirty presses.
  */
 const NUDGE_M = 4;
+
+/**
+ * The street map, for the reader who wants to know where this is.
+ *
+ * The drawing's own projection is affine — the ground is rotated and scaled,
+ * never divided by depth — so a square of map on the ground is a parallelogram
+ * on the canvas and nothing more. That is exactly what `ctx.transform` says, so
+ * a tile goes down under the massing with no warping and no seams to patch.
+ *
+ * OneMap is the Singapore Land Authority's own, which the app already geocodes
+ * against. No key, no tile bill, and it is the map this reader has seen before.
+ * `Default` rather than `Grey`: blue water, green parks, expressways in yellow
+ * and the block numbers already printed — the grey wash said nothing the plan
+ * did not. CARTO's Voyager was tried here and stamps a watermark on any tile
+ * fetched without a key, so it is not keyless whatever the docs imply.
+ */
+const TILE_URL = (z: number, x: number, y: number) =>
+  `https://www.onemap.gov.sg/maps/tiles/Default/${z}/${x}/${y}.png`;
+const TILE_PX = 256;
+const TILE_ZOOM_MIN = 15;
+const TILE_ZOOM_MAX = 19;
+/** Metres per pixel at the equator at zoom 0, the figure the whole scheme is cut from. */
+const EQUATOR_M_PER_PX = 156543.03392;
+/** A runaway camera must not queue a thousand requests at somebody else's server. */
+const TILE_BUDGET = 120;
+
+/**
+ * Tiles already asked for, keyed z/x/y, shared by every plan on the page. A
+ * pending entry is an Image still loading, which is why the draw checks
+ * `complete` rather than trusting the cache to hold finished pictures.
+ */
+const tileCache = new Map<string, HTMLImageElement>();
+/** Enough for several minutes of turning the camera; past that, start again. */
+const TILE_CACHE_MAX = 400;
 
 /** Segments the sun ray is split into, so it can pass behind a block and out. */
 const RAY_SEGMENTS = 22;
@@ -145,7 +181,7 @@ export default function PlanMap({
    */
   const hits = useRef<{ id: string; path: Path2D }[]>([]);
   /** The block under the cursor, and where to put its name. */
-  const [hover, setHover] = useState<{ label: string; x: number; y: number } | null>(null);
+  const [hover, setHover] = useState<{ label: string; x: number; y: number; flip: boolean } | null>(null);
   // Where the marker is while a finger is on it. Null the rest of the time, so
   // the analysis stays the single source of truth once the finger lifts.
   const [placing, setPlacing] = useState<[number, number] | null>(null);
@@ -163,6 +199,16 @@ export default function PlanMap({
   useEffect(() => {
     setNudging(window.matchMedia("(pointer: coarse)").matches);
   }, []);
+
+  /**
+   * Whether the street map is laid under the massing. Off by default: the plan
+   * is a drawing, and the drawing answers the question. The map answers a
+   * different one — where is this — and the reader asks for it.
+   */
+  const [basemap, setBasemap] = useState(false);
+  /** Bumped when a tile arrives, which is the only thing that asks for a redraw
+   *  that no other piece of state can see coming. */
+  const [tileTick, setTileTick] = useState(0);
 
   // The view turns about the block being reported on, not about the pin: on a
   // condo the pin can sit out at the gate, and swivelling round a gate throws
@@ -220,10 +266,12 @@ export default function PlanMap({
     // the massing can be repainted, and without this the queue runs away.
     const frame = requestAnimationFrame(() => {
       hits.current = [];
-      draw(ctx, result, timeMinutes, day, camera, marker, hits.current);
+      draw(ctx, result, timeMinutes, day, camera, marker, hits.current, basemap, () =>
+        setTileTick((t) => t + 1),
+      );
     });
     return () => cancelAnimationFrame(frame);
-  }, [result, timeMinutes, day, camera, marker]);
+  }, [result, timeMinutes, day, camera, marker, basemap, tileTick]);
 
   const toCanvas = (clientX: number, clientY: number, el: HTMLCanvasElement) => {
     const rect = el.getBoundingClientRect();
@@ -295,78 +343,144 @@ export default function PlanMap({
   const scaleZoom = (by: number) => setZoom((z) => clampZoom(z * by));
 
   return (
-    <div className={`plan canvas-wrap${busy ? " busy" : ""}`}>
-      <canvas
-        ref={ref}
-        role="img"
-        aria-label={planDescription(result)}
-        style={{ aspectRatio: `${W} / ${H}` }}
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          setHover(null);
-          const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
-          // Either the marker is being taken hold of, or the view is being
-          // swivelled. The marker is the more specific, so it is asked first.
-          if (!busy && onMarker(px, py, e.currentTarget)) {
-            setPlacing(snap(px, py));
-            return;
-          }
-          drag.current = { x: e.clientX, y: e.clientY, azimuth, pitch };
-        }}
-        onPointerMove={(e) => {
-          if (placing) {
+    <div className={`plan${busy ? " busy" : ""}`}>
+      <div className="plan-stage">
+        <canvas
+          ref={ref}
+          role="img"
+          aria-label={planDescription(result)}
+          style={{ aspectRatio: `${W} / ${H}` }}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setHover(null);
             const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
-            setPlacing(snap(px, py));
-            return;
-          }
-          const d = drag.current;
-          if (!d) {
-            // Nothing is being dragged, so the cursor's job is to say what could be.
-            const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
-            const grabbable = !busy && onMarker(px, py, e.currentTarget);
-            e.currentTarget.style.cursor = grabbable ? "grab" : "";
-            // The marker is the more specific target, so it keeps the pointer.
-            const id = grabbable ? null : blockAt(px, py);
-            const b = id ? result.buildings.find((x) => x.id === id) : null;
+            // Either the marker is being taken hold of, or the view is being
+            // swivelled. The marker is the more specific, so it is asked first.
+            if (!busy && onMarker(px, py, e.currentTarget)) {
+              setPlacing(snap(px, py));
+              return;
+            }
+            drag.current = { x: e.clientX, y: e.clientY, azimuth, pitch };
+          }}
+          onPointerMove={(e) => {
+            if (placing) {
+              const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
+              setPlacing(snap(px, py));
+              return;
+            }
+            const d = drag.current;
+            if (!d) {
+              // Nothing is being dragged, so the cursor's job is to say what could be.
+              const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
+              const grabbable = !busy && onMarker(px, py, e.currentTarget);
+              e.currentTarget.style.cursor = grabbable ? "grab" : "";
+              // The marker is the more specific target, so it keeps the pointer.
+              const id = grabbable ? null : blockAt(px, py);
+              const b = id ? result.buildings.find((x) => x.id === id) : null;
+              const box = e.currentTarget.getBoundingClientRect();
+              const px2 = e.clientX - box.left;
+              setHover(
+                b
+                  ? {
+                      label: describeBuilding(b),
+                      x: px2,
+                      y: e.clientY - box.top,
+                      // Near the right edge the name would run off the drawing,
+                      // so it hangs off the other side of the cursor instead.
+                      flip: px2 > box.width - TIP_REACH_PX,
+                    }
+                  : null,
+              );
+              return;
+            }
+            // One drag does both: across turns the camera round the block,
+            // down brings it lower and up lifts it overhead.
             const box = e.currentTarget.getBoundingClientRect();
-            setHover(
-              b
-                ? { label: describeBuilding(b), x: e.clientX - box.left, y: e.clientY - box.top }
-                : null,
-            );
-            return;
-          }
-          // One drag does both: across turns the camera round the block,
-          // down brings it lower and up lifts it overhead.
-          const box = e.currentTarget.getBoundingClientRect();
-          const dx = e.clientX - d.x;
-          const dy = e.clientY - d.y;
-          setAzimuth(d.azimuth + (dx / (box.width || W)) * SWIVEL_PER_WIDTH);
-          setPitch(clampPitch(d.pitch - (dy / (box.height || H)) * PITCH_PER_HEIGHT));
-        }}
-        onPointerUp={() => {
-          if (placing) {
-            onPlaceWindow(makeProjection(result.origin).toLatLng(placing[0], placing[1]));
+            const dx = e.clientX - d.x;
+            const dy = e.clientY - d.y;
+            setAzimuth(d.azimuth + (dx / (box.width || W)) * SWIVEL_PER_WIDTH);
+            setPitch(clampPitch(d.pitch - (dy / (box.height || H)) * PITCH_PER_HEIGHT));
+          }}
+          onPointerUp={() => {
+            if (placing) {
+              onPlaceWindow(makeProjection(result.origin).toLatLng(placing[0], placing[1]));
+              setPlacing(null);
+              return;
+            }
+            drag.current = null;
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
             setPlacing(null);
-            return;
-          }
-          drag.current = null;
-        }}
-        onPointerCancel={() => {
-          drag.current = null;
-          setPlacing(null);
-        }}
-        onPointerLeave={() => setHover(null)}
-      />
+          }}
+          onPointerLeave={() => setHover(null)}
+        />
 
-      {/* Named, not explained: the drawing already says how tall a block is and
-          how much it eats, and the one thing it cannot say is which block it is.
-          The screen reader gets the same names from the plan's description. */}
-      {hover && (
-        <div className="plan-tip" style={{ left: hover.x, top: hover.y }} aria-hidden>
-          {hover.label}
+        {/* Named, not explained: the drawing already says how tall a block is and
+            how much it eats, and the one thing it cannot say is which block it is.
+            The screen reader gets the same names from the plan's description. */}
+        {hover && (
+          <div className={`plan-tip${hover.flip ? " flip" : ""}`} style={{ left: hover.x, top: hover.y }} aria-hidden>
+            {hover.label}
+          </div>
+        )}
+
+        {/* Turning, tilting and zooming only move where the reader stands, so
+            they float on the drawing itself rather than taking a row of the card
+            — and they are anchored to the drawing, not to the box that also holds
+            the row beneath it, which is what used to leave them hanging off the
+            bottom edge and shifting whenever that row changed height. */}
+        <div className="plan-controls">
+          <button onClick={() => swivel(-SWIVEL_STEP)} aria-label="Turn the view left" title="Turn left">
+            <Turn back />
+          </button>
+          <button onClick={() => swivel(SWIVEL_STEP)} aria-label="Turn the view right" title="Turn right">
+            <Turn />
+          </button>
+          <button
+            onClick={() => tilt(PITCH_STEP)}
+            disabled={pitch >= PITCH_MAX - 1e-6}
+            aria-label="Raise the view"
+            title="Raise the view"
+          >
+            <Glyph d="M9 14V4M4.5 8.5 9 4l4.5 4.5" />
+          </button>
+          <button
+            onClick={() => tilt(-PITCH_STEP)}
+            disabled={pitch <= PITCH_MIN + 1e-6}
+            aria-label="Lower the view"
+            title="Lower the view"
+          >
+            <Glyph d="M9 4v10M4.5 9.5 9 14l4.5-4.5" />
+          </button>
+          <button
+            onClick={() => scaleZoom(1 / ZOOM_STEP)}
+            disabled={zoom <= MIN_ZOOM + 1e-6}
+            aria-label="Zoom out"
+            title="Zoom out"
+          >
+            <Glyph d="M4 9h10" />
+          </button>
+          <button
+            onClick={() => scaleZoom(ZOOM_STEP)}
+            disabled={zoom >= MAX_ZOOM - 1e-6}
+            aria-label="Zoom in"
+            title="Zoom in"
+          >
+            <Glyph d="M4 9h10M9 4v10" />
+          </button>
+          {/* Apart from the camera buttons by a gap, because it does not move the
+              camera — it changes what the camera is looking at. */}
+          <button
+            onClick={() => setBasemap((on) => !on)}
+            aria-pressed={basemap}
+            aria-label={basemap ? "Hide the street map" : "Show the street map under the plan"}
+            title={basemap ? "Hide the street map" : "Show the street map"}
+          >
+            <Glyph d="M6.5 4 2.5 5.8v8.2l4-1.8 5 1.8 4-1.8V4l-4 1.8zM6.5 4v8.2M11.5 5.8V14" />
+          </button>
         </div>
-      )}
+      </div>
 
       {/* The window's own controls, kept apart from the camera's: one moves the
           unit being reported on, the others only change where you stand to look
@@ -391,46 +505,6 @@ export default function PlanMap({
         </div>
       )}
 
-      <div className="plan-controls">
-        <button onClick={() => swivel(-SWIVEL_STEP)} aria-label="Turn the view left" title="Turn left">
-          <Turn back />
-        </button>
-        <button onClick={() => swivel(SWIVEL_STEP)} aria-label="Turn the view right" title="Turn right">
-          <Turn />
-        </button>
-        <button
-          onClick={() => tilt(PITCH_STEP)}
-          disabled={pitch >= PITCH_MAX - 1e-6}
-          aria-label="Raise the view"
-          title="Raise the view"
-        >
-          <Glyph d="M9 14V4M4.5 8.5 9 4l4.5 4.5" />
-        </button>
-        <button
-          onClick={() => tilt(-PITCH_STEP)}
-          disabled={pitch <= PITCH_MIN + 1e-6}
-          aria-label="Lower the view"
-          title="Lower the view"
-        >
-          <Glyph d="M9 4v10M4.5 9.5 9 14l4.5-4.5" />
-        </button>
-        <button
-          onClick={() => scaleZoom(1 / ZOOM_STEP)}
-          disabled={zoom <= MIN_ZOOM + 1e-6}
-          aria-label="Zoom out"
-          title="Zoom out"
-        >
-          <Glyph d="M4 9h10" />
-        </button>
-        <button
-          onClick={() => scaleZoom(ZOOM_STEP)}
-          disabled={zoom >= MAX_ZOOM - 1e-6}
-          aria-label="Zoom in"
-          title="Zoom in"
-        >
-          <Glyph d="M4 9h10M9 4v10" />
-        </button>
-      </div>
     </div>
   );
 }
@@ -591,6 +665,8 @@ function draw(
   camera: Camera,
   marker: [number, number],
   hits?: { id: string; path: Path2D }[],
+  basemap = false,
+  onTile: () => void = () => {},
 ) {
   const v = view(camera);
   const c = palette();
@@ -606,8 +682,17 @@ function draw(
 
   // The Master Plan's ground goes down first, under everything: it is the
   // surface the model stands on, not an overlay on top of it.
-  drawGround(ctx, v, c, result);
-  drawGrid(ctx, v, c);
+  //
+  // With the street map under the massing both of these come off. The tile
+  // already draws the water and the greenery, in its own colours, and the grid
+  // is a scale for a drawing that has no map — laying either over the map says
+  // the same thing twice and disagrees with itself about where the edges are.
+  if (basemap) {
+    drawTiles(ctx, v, camera, result.origin, onTile);
+  } else {
+    drawGround(ctx, v, c, result);
+    drawGrid(ctx, v, c);
+  }
 
   // The engine reads 600 m of neighbourhood and the frame holds a slice of it.
   // Drawing what falls outside costs exactly as much as drawing what you can
@@ -641,6 +726,7 @@ function draw(
   drawSightline(ctx, v, c, result, hiddenAt);
   drawWindow(ctx, v, c, result, sun, marker, hiddenAt);
   drawFurniture(ctx, v, c, sun);
+  if (basemap) drawMapCredit(ctx, c);
 }
 
 /** Read the theme off the document so the drawing and the CSS cannot drift. */
@@ -722,6 +808,122 @@ type Palette = ReturnType<typeof palette>;
  * bare ground, because the plan zones it by floor area and not height and
  * colouring it in would be a claim about a skyline that nobody has published.
  */
+/**
+ * Web Mercator, both ways. A tile is a square in this space, and the only
+ * reason it is not a square on the ground is the latitude — at Singapore's
+ * that is a scale factor of 1.0003, about 17 cm across the whole 600 m the
+ * engine reads. It is not worth a correction.
+ */
+const lngToTile = (lng: number, z: number) => ((lng + 180) / 360) * 2 ** z;
+const latToTile = (lat: number, z: number) => {
+  const s = Math.sin(rad(lat));
+  return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 2 ** z;
+};
+const tileToLng = (x: number, z: number) => (x / 2 ** z) * 360 - 180;
+const tileToLat = (y: number, z: number) =>
+  (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z))) * 180) / Math.PI;
+
+/**
+ * The street map, laid on the ground plane under everything else.
+ *
+ * Three corners of a tile are enough: the projection is affine, so the fourth
+ * is implied and the transform that carries the tile's own 256 pixels onto the
+ * ground is the one this builds. `transform` rather than `setTransform`,
+ * because the canvas is already scaled by the device pixel ratio and replacing
+ * that would draw the map at a quarter size on a retina screen.
+ */
+function drawTiles(
+  ctx: CanvasRenderingContext2D,
+  v: View,
+  camera: Camera,
+  origin: LatLng,
+  onTile: () => void,
+) {
+  const proj = makeProjection(origin);
+
+  // One tile pixel should cover about what one canvas pixel covers, measured
+  // across the screen where the drawing is not foreshortened.
+  const z = Math.max(
+    TILE_ZOOM_MIN,
+    Math.min(TILE_ZOOM_MAX, Math.round(Math.log2(EQUATOR_M_PER_PX * Math.cos(rad(origin.lat)) * v.kx))),
+  );
+
+  // The same ground the buildings are culled to, so the map reaches exactly as
+  // far as the model standing on it.
+  const [ox, oy] = camera.pivot;
+  const r = v.reachM + 60;
+  let west = Infinity, east = -Infinity, north = Infinity, south = -Infinity;
+  for (const [x, y] of [[ox - r, oy - r], [ox + r, oy - r], [ox - r, oy + r], [ox + r, oy + r]]) {
+    const { lat, lng } = proj.toLatLng(x, y);
+    const tx = lngToTile(lng, z);
+    const ty = latToTile(lat, z);
+    west = Math.min(west, tx); east = Math.max(east, tx);
+    north = Math.min(north, ty); south = Math.max(south, ty);
+  }
+  const x0 = Math.floor(west), x1 = Math.floor(east);
+  const y0 = Math.floor(north), y1 = Math.floor(south);
+  if ((x1 - x0 + 1) * (y1 - y0 + 1) > TILE_BUDGET) return;
+
+  const at = (lat: number, lng: number): [number, number] => {
+    const [x, y] = proj.toLocal({ lat, lng });
+    return [v.sx(x, y), v.sy(x, y, 0)];
+  };
+
+  for (let tx = x0; tx <= x1; tx++) {
+    for (let ty = y0; ty <= y1; ty++) {
+      const img = tileImage(z, tx, ty, onTile);
+      if (!img.complete || img.naturalWidth === 0) continue;
+
+      const nw = at(tileToLat(ty, z), tileToLng(tx, z));
+      const ne = at(tileToLat(ty, z), tileToLng(tx + 1, z));
+      const sw = at(tileToLat(ty + 1, z), tileToLng(tx, z));
+
+      ctx.save();
+      ctx.transform(
+        (ne[0] - nw[0]) / TILE_PX, (ne[1] - nw[1]) / TILE_PX,
+        (sw[0] - nw[0]) / TILE_PX, (sw[1] - nw[1]) / TILE_PX,
+        nw[0], nw[1],
+      );
+      // A pixel of overlap. Neighbouring tiles agree on the edge exactly, but
+      // the antialiasing of two abutting parallelograms does not, and the seam
+      // shows as a hairline of whatever is underneath.
+      ctx.drawImage(img, 0, 0, TILE_PX + 1, TILE_PX + 1);
+      ctx.restore();
+    }
+  }
+
+}
+
+/**
+ * Whose map this is. The footer credits OneMap for the geocoding; a map has to
+ * carry its own. Bottom right, because bottom left is the scale bar —
+ * and drawn last, or the massing stands on it.
+ */
+function drawMapCredit(ctx: CanvasRenderingContext2D, c: Palette) {
+  ctx.fillStyle = c.faint;
+  ctx.font = `10px ${c.face}`;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("Map: OneMap \u00a9 Singapore Land Authority", W - 16, H - 12);
+}
+
+/** The tile, or the Image that will be one. Asking twice costs nothing. */
+function tileImage(z: number, x: number, y: number, onTile: () => void) {
+  const key = `${z}/${x}/${y}`;
+  const hit = tileCache.get(key);
+  if (hit) return hit;
+
+  if (tileCache.size > TILE_CACHE_MAX) tileCache.clear();
+  const img = new Image();
+  img.decoding = "async";
+  // A tile that will not load is not an error worth a message: the drawing is
+  // complete without it, which is the whole reason the map is an underlay.
+  img.onload = onTile;
+  img.src = TILE_URL(z, x, y);
+  tileCache.set(key, img);
+  return img;
+}
+
 function drawGround(
   ctx: CanvasRenderingContext2D,
   v: View,
