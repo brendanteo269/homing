@@ -1,0 +1,446 @@
+/*
+ * One committed light theme, built from a five-colour scheme: deep teal
+ * #244855, vermilion #E64833, brown #874F41, sage #90AEAD and cream #FBE9D0.
+ * The subject is a building and the sun on it, so the page is the paper an
+ * architect would draw that on: the cream is the paper, the model is picked out
+ * in teal, and the vermilion is kept for sunlight and nothing else.
+ *
+ * Contrast against --panel, measured: ink 9.6, muted 6.5, faint 5.6. The
+ * quietest tier still clears WCAG AA on all three surfaces.
+ */
+:root {
+  --bg: #fbe9d0;
+  --panel: #fffcf7;
+  --raised: #fdf4e6;
+  --line: #eddfc8;
+  --line-bright: #ddc9aa;
+
+  --ink: #244855;
+  --muted: #4c6068;
+  --faint: #56696f;
+  /* Text sitting on a surface filled with --ink. */
+  --on-ink: #fbe9d0;
+
+  /* The 10%: sunlight. Nothing else in the interface is allowed to be vermilion. */
+  --sun: #e64833;
+  --sun-quiet: #f3b9ac;
+  /* The 20%: everything that is sky, shade or structure. */
+  --steel: #2e6e80;
+  --violet: #874f41;
+  /* The sky dome lives or dies on these two reading apart at a glance: sage
+     sky against brown-tinted mass, 1.54:1 apart in luminance. */
+  --sky-open: #cfe3e0;
+  --mass: #c9b195;
+  --mass-lit: #dbc7ae;
+  --host: #244855;
+
+  --good: #1f6b52;
+  --warn: #874f41;
+  --bad: #b93622;
+
+  /*
+   * The plan is a canvas, so it cannot read these itself — PlanMap looks every
+   * one of them up. Cards on cream paper: the neighbours are pale, whatever
+   * blocks the view is picked out in brown, and your own block is solid teal.
+   */
+  --plan-ground: #f6e6cd;
+  --plan-grid: rgba(36, 72, 85, 0.07);
+  --plan-shadow: rgba(135, 79, 65, 0.16);
+  --plan-roof: #eddcc2;
+  --plan-wall-lit: #ddc9ab;
+  --plan-wall-dark: #c9b596;
+  --plan-edge: #bda88a;
+  --plan-blocker-roof: #cbb098;
+  --plan-blocker-wall: #b9997f;
+  --plan-blocker-wall-dark: #a2836c;
+  --plan-host-roof: #2f5a68;
+  --plan-host-wall: #244855;
+  --plan-host-wall-dark: #1a353f;
+  --plan-host-label: #fbe9d0;
+  --plan-fan-fill: rgba(230, 72, 51, 0.14);
+  --plan-fan-line: rgba(230, 72, 51, 0.5);
+  --plan-ray: rgba(230, 72, 51, 0.62);
+
+  --r: 4px;
+  --mono: var(--font-mono), ui-monospace, Menlo, monospace;
+  --sans: var(--font-sans), ui-sans-serif, -apple-system, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 550; letter-spacing: -0.012em; }
+p { margin: 0; }
+button { font: inherit; color: inherit; }
+
+/* Every number in the interface is a measurement; none of them should reflow
+   as they tick. */
+.num, .stat .v, .bar b, table td, .postal, .control label span:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+.page { max-width: 1280px; margin: 0 auto; padding: 20px 24px 80px; }
+
+/* ---------- masthead ---------- */
+.masthead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.masthead h1 { font-size: 17px; letter-spacing: 0.01em; font-weight: 600; }
+.masthead .tag {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--faint);
+  border: 1px solid var(--line-bright); border-radius: 2px; padding: 1px 6px;
+}
+.lede { color: var(--muted); max-width: 64ch; margin-bottom: 16px; font-size: 13px; }
+
+/* ---------- search ---------- */
+.search-row { display: flex; align-items: flex-start; gap: 8px; }
+.search { position: relative; width: min(460px, 100%); }
+.search input {
+  width: 100%; padding: 10px 12px; font: inherit;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line-bright); border-radius: var(--r);
+  transition: border-color 140ms ease;
+}
+.search input::placeholder { color: var(--faint); }
+.search input:focus { outline: none; border-color: var(--sun); }
+.results {
+  position: absolute; z-index: 20; top: calc(100% + 5px); left: 0; right: 0;
+  background: var(--raised); border: 1px solid var(--line-bright);
+  border-radius: var(--r); overflow: hidden auto; max-height: 300px;
+  box-shadow: 0 10px 28px rgba(36, 72, 85, 0.16);
+}
+.results button {
+  display: block; width: 100%; text-align: left; padding: 9px 12px;
+  background: none; border: 0; border-bottom: 1px solid var(--line); cursor: pointer;
+}
+.results button:last-child { border-bottom: 0; }
+.results button:hover, .results button:focus-visible { background: var(--bg); outline: none; }
+.results .addr { font-size: 13px; }
+.results .sub { font-size: 11px; color: var(--faint); margin-top: 1px; }
+.search-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.go-home {
+  padding: 10px 13px; background: var(--ink); color: var(--on-ink); border: 1px solid var(--ink);
+  border-radius: var(--r); cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, border-color 160ms ease;
+}
+.go-home:hover { background: #173640; border-color: #173640; }
+.go-home:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
+
+.postal {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+  color: var(--faint); margin-right: 8px;
+}
+
+/* ---------- layout ---------- */
+.summary-grid {
+  display: grid; grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.8fr);
+  gap: 12px; margin-top: 16px; align-items: start;
+}
+.summary-stack { display: grid; gap: 12px; }
+@media (max-width: 620px) { .summary-grid { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 16px;
+}
+.card + .card { margin-top: 12px; }
+.card > h2 {
+  font-family: var(--mono); font-size: 12px; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--muted); font-weight: 500; margin-bottom: 14px;
+}
+/* The plan carries its own frame; it should not sit in a lit box as well. */
+.card.plan-card { padding: 0; overflow: hidden; background: var(--plan-ground); }
+.card.plan-card > h2 {
+  padding: 14px 16px 0; margin-bottom: 10px;
+}
+.summary-grid .card { padding: 16px; }
+.summary-grid .card + .card { margin-top: 0; }
+.summary-grid .card > h2 { font-size: 12px; margin-bottom: 14px; }
+.summary-grid .plan-card { margin-top: 0; padding: 0; }
+.summary-grid .plan-card > h2 { padding: 14px 16px 0; margin-bottom: 10px; }
+.verdict-loading { display: flex; flex-direction: column; justify-content: center; min-height: 180px; }
+.summary-stack .card { padding: 14px; }
+.summary-stack .control { margin-bottom: 10px; }
+.summary-stack .control label { margin-bottom: 5px; }
+.summary-stack .sides button { padding: 6px 8px; }
+.summary-stack .headline .n { font-size: 48px; }
+.summary-stack .bars { margin-top: 12px; }
+.summary-stack .bar + .bar { margin-top: 6px; }
+.summary-stack .notes { margin-top: 10px; padding-top: 9px; }
+.summary-stack .notes li { font-size: 13px; line-height: 1.45; }
+
+/* ---------- controls ---------- */
+.control { margin-bottom: 16px; }
+.control:last-child { margin-bottom: 0; }
+.control label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; color: var(--muted); margin-bottom: 8px;
+}
+/* Mono is for the readout on the right, not for a label that happens to be the
+   only span in its row — a question set in monospace reads like code. */
+.control label span + span { color: var(--ink); font-family: var(--mono); font-size: 12px; }
+
+/* The track stays neutral and only the handle takes the accent — a full
+   vermilion bar across a panel outshouts the drawing it is there to scrub. */
+input[type="range"] {
+  width: 100%; height: 18px; margin: 0; background: none;
+  -webkit-appearance: none; appearance: none; cursor: ew-resize;
+}
+input[type="range"]:focus-visible { outline: 1px solid var(--sun); outline-offset: 4px; }
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px; background: var(--line-bright); border-radius: 1px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; margin-top: -6px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--sun); border: 0;
+}
+input[type="range"]::-moz-range-track { height: 2px; background: var(--line-bright); }
+input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--sun);
+}
+
+.hint { font-size: 13px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+
+.compass-row { display: flex; gap: 4px; }
+.compass-row button {
+  flex: 1 1 auto; min-width: 38px; padding: 5px 0;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--line-bright); border-radius: 3px;
+  cursor: pointer; font-size: 11px; font-family: var(--mono);
+  transition: color 140ms ease, border-color 140ms ease;
+}
+.compass-row button:hover { color: var(--ink); border-color: var(--faint); }
+.compass-row button[aria-pressed="true"] {
+  background: var(--ink); border-color: var(--ink); color: var(--on-ink);
+}
+
+/* ---------- unit panel ---------- */
+.unit-name { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; }
+
+.sides { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.sides button {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
+  background: transparent; border: 1px solid var(--line-bright); border-radius: 3px;
+  cursor: pointer; text-align: left;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.sides button:hover { border-color: var(--faint); }
+.sides button b { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
+.sides button span { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.sides button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.sides button[aria-pressed="true"] span { color: rgba(248, 247, 244, 0.72); }
+
+/* ---------- verdict ---------- */
+.headline { display: flex; align-items: baseline; gap: 10px; }
+.headline .n {
+  font-size: 54px; font-weight: 300; letter-spacing: -0.04em; line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+}
+.headline .of { font-size: 13px; color: var(--muted); line-height: 1.35; }
+
+.bars { margin-top: 16px; }
+.bar + .bar { margin-top: 8px; }
+.bar .row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+.bar .row span { color: var(--muted); }
+.bar .row b { font-weight: 500; font-family: var(--mono); font-size: 12px; }
+.bar .track { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.bar .fill { height: 100%; transition: width 220ms ease; }
+
+.notes { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.notes ul { margin: 0; padding-left: 15px; }
+.notes li { font-size: 14px; color: var(--ink); line-height: 1.55; }
+.notes li + li { margin-top: 6px; }
+
+/* ---------- the plan ---------- */
+.canvas-wrap { position: relative; }
+canvas { display: block; width: 100%; height: auto; }
+/* Horizontal drag swivels the view; pan-y leaves the page free to scroll under
+   a finger, which matters because the plan is most of a phone screen. */
+.plan canvas { cursor: grab; touch-action: pan-y; }
+.plan canvas:active { cursor: grabbing; }
+
+/* Drag is a mouse affordance, so the same two moves are buttons as well — that
+   is the only way they reach a keyboard. */
+.plan-controls {
+  position: absolute; right: 12px; bottom: 12px;
+  display: flex; gap: 4px;
+}
+.plan-controls button {
+  width: 30px; height: 30px; padding: 0;
+  display: grid; place-items: center;
+  font-size: 13px; line-height: 1;
+  background: var(--panel); color: var(--muted);
+  border: 1px solid var(--line-bright); border-radius: 3px;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+.plan-controls button:hover:not(:disabled) { color: var(--ink); border-color: var(--faint); }
+.plan-controls button:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
+.plan-controls button:disabled { opacity: 0.45; cursor: default; }
+/* 30px is comfortable under a pointer and too small under a thumb, so the
+   target follows the input device rather than the screen width. */
+@media (pointer: coarse) {
+  .plan-controls button { width: 44px; height: 44px; }
+}
+/* The two pairs are different jobs; a gap says so without a divider. */
+.plan-controls button:nth-child(3) { margin-left: 8px; }
+
+.scrub {
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px 16px; border-top: 1px solid var(--line);
+}
+.scrub .time {
+  flex: 0 0 auto; min-width: 56px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.scrub input[type="range"] { flex: 1 1 auto; }
+.scrub .compass-row { flex: 0 0 auto; }
+
+/* At phone width the scrubber and the four seasons cannot share a row without
+   the slider becoming untouchable. */
+@media (max-width: 560px) {
+  .scrub { flex-direction: column; align-items: stretch; gap: 10px; }
+  .scrub .compass-row { width: 100%; }
+}
+
+.fig-caption {
+  font-size: 11.5px; color: var(--faint); padding: 0 16px 14px; line-height: 1.5;
+}
+.figs .fig-caption { padding: 0; margin-top: 10px; }
+
+/* ---------- plain-language visual checks ---------- */
+.view-profile { margin: 0; }
+.view-profile svg { display: block; }
+.sun-calendar { margin: 0; display: grid; gap: 4px; }
+.heatmap-heading, .heatmap-row {
+  display: grid; grid-template-columns: 42px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: center;
+}
+.heatmap-heading { font-family: var(--mono); color: var(--faint); font-size: 10px; margin-bottom: 3px; }
+.heatmap-row > span:first-child { font-size: 12px; color: var(--muted); }
+.sun-cell { display: block; padding: 5px 6px; min-height: 28px; border-radius: 2px; color: var(--ink); font-family: var(--mono); font-size: 11px; text-align: center; }
+.heatmap-key { font-size: 11.5px; color: var(--faint); margin-top: 8px; }
+
+.legend {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  font-size: 11px; color: var(--faint); margin-top: 10px; font-family: var(--mono);
+}
+.legend i {
+  display: inline-block; width: 8px; height: 8px; border-radius: 1px;
+  margin-right: 6px; vertical-align: 0;
+}
+
+/* ---------- figures ---------- */
+.figs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 720px) { .figs { grid-template-columns: 1fr; } }
+
+/* ---------- measurements ---------- */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 24px; }
+.stat { padding: 10px 0; border-top: 1px solid var(--line); }
+.stat .k { font-size: 12.5px; color: var(--muted); margin-bottom: 3px; }
+.stat .v { font-size: 20px; font-weight: 300; letter-spacing: -0.02em; }
+.stat .v small { font-size: 11px; color: var(--muted); font-weight: 400; letter-spacing: 0; }
+.compact-hint { margin-top: -6px; }
+.measurement-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.measurement-group { border: 1px solid var(--line-bright); border-radius: var(--r); padding: 0 12px; }
+.measurement-group summary { cursor: pointer; padding: 10px 0; color: var(--ink); font-size: 13px; font-weight: 550; }
+.measurement-group[open] summary { border-bottom: 1px solid var(--line); }
+.measurement-group .stats { padding-bottom: 4px; }
+@media (max-width: 560px) { .measurement-groups { grid-template-columns: 1fr; } }
+
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+
+/* A row of findings reads as a sentence with a number on the end, not as a
+   spreadsheet. The thing and where it is lead; the qualifier sits under it in
+   a quieter size, so scanning the column of names never crosses small type. */
+.datum {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 18px; padding: 12px 0; border-top: 1px solid var(--line);
+}
+.datum:first-of-type { border-top: none; }
+.datum .what { font-size: 15px; color: var(--ink); line-height: 1.35; }
+.datum .where { font-size: 13.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+.datum .amount { font-size: 15px; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.datum .amount small { display: block; font-size: 12.5px; color: var(--faint); margin-top: 3px; }
+
+/* ---------- outlook and nearby industry ---------- */
+.outlook-story { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; }
+.outlook-number { font-size: 64px; font-weight: 300; letter-spacing: -0.055em; line-height: 0.85; color: var(--good); font-variant-numeric: tabular-nums; }
+.outlook-story p { color: var(--muted); max-width: 47ch; }
+.outlook-bar { height: 12px; margin-top: 22px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.outlook-bar span { display: block; height: 100%; min-width: 2px; background: var(--good); }
+.outlook-key { display: flex; justify-content: space-between; gap: 12px; color: var(--faint); font-size: 11px; margin-top: 7px; }
+.outlook-key i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; background: var(--good); vertical-align: -1px; }
+.outlook-details { margin-top: 18px; }
+.outlook-details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.outlook-details[open] summary { margin-bottom: 8px; }
+.noise-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0 22px; }
+.noise-group { display: grid; gap: 2px; padding: 12px 0; border-top: 1px solid var(--line); }
+.noise-group strong { font-size: 14px; font-weight: 550; }
+.noise-group span { font-size: 13px; color: var(--muted); }
+.noise-group small { font-size: 12px; color: var(--faint); }
+th {
+  text-align: left; font-family: var(--mono); font-weight: 500; color: var(--faint);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 8px;
+}
+td { padding: 9px 0; border-top: 1px solid var(--line); color: var(--muted); }
+td.name { color: var(--ink); }
+td.right, th.right { text-align: right; }
+.src { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+.state { padding: 90px 20px; text-align: center; color: var(--faint); font-size: 13px; line-height: 1.7; }
+.error { color: var(--bad); }
+
+.footnote {
+  margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line);
+  font-size: 11.5px; color: var(--faint); max-width: 84ch; line-height: 1.6;
+}
+.footnote a { color: var(--muted); text-decoration-color: var(--line-bright); }
+.footnote a:hover { color: var(--ink); }
+
+/* ---------- the workings ---------- */
+.workings { margin-top: 12px; }
+.workings > summary {
+  cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--faint); padding: 8px 14px;
+  border: 1px solid var(--line-bright); border-radius: var(--r);
+  transition: color 140ms ease, border-color 140ms ease;
+}
+.workings > summary::-webkit-details-marker { display: none; }
+.workings > summary::before {
+  content: ""; width: 5px; height: 5px; border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor; transform: rotate(-45deg); margin-top: -2px;
+}
+.workings[open] > summary::before { transform: rotate(45deg); margin-top: -4px; }
+.workings > summary:hover { color: var(--ink); border-color: var(--faint); }
+.workings > *:not(summary) { margin-top: 12px; }
+
+/* ---------- working ---------- */
+/*
+ * One gesture asks one question, and until that question is answered the two
+ * moves that would ask another are refused. The refusal has to be visible, or a
+ * press that does nothing reads as a broken control rather than a busy one.
+ */
+.sides button:disabled { opacity: 0.45; cursor: default; }
+.sides button:disabled:hover { border-color: var(--line-bright); }
+
+.working { color: var(--sun); display: inline-flex; align-items: center; gap: 7px; }
+.working::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) {
+  .working::before { animation: none; }
+}

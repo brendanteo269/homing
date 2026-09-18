@@ -1,0 +1,28 @@
+{
+  "name": "homing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Homing — neutral sun and blockage analysis for Singapore homes.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "analyse": "tsx scripts/analyse.ts",
+    "calibrate": "tsx scripts/calibrate.ts",
+    "build-hdb": "tsx scripts/build-hdb.ts",
+    "build-masterplan": "tsx scripts/build-masterplan.ts"
+  },
+  "dependencies": {
+    "next": "^16.3.5",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "tsx": "^4.23.13",
+    "typescript": "^5.7.3"
+  }
+}
