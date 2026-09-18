@@ -596,6 +596,15 @@ canvas { display: block; width: 100%; height: auto; }
 .window-nudge button:hover:not(:disabled) { color: var(--ink); border-color: var(--faint); }
 .window-nudge button:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
 .window-nudge button:disabled { opacity: 0.45; cursor: default; }
+/* The one button in this row that asks a question rather than moving the
+   marker, so it is the one that looks like an answer is coming. */
+.window-nudge button.commit {
+  width: auto; height: auto; min-height: 30px; padding: 0 11px;
+  font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap;
+  color: var(--on-ink); background: var(--ink); border-color: var(--ink);
+}
+.window-nudge button.commit:hover:not(:disabled) { color: var(--on-ink); background: #2b2e1b; border-color: #2b2e1b; }
+
 /* The toggle is a sentence, not a control: it should not look like one. */
 .window-nudge button.as-text {
   width: auto; height: auto; padding: 2px 4px;
@@ -607,6 +616,7 @@ canvas { display: block; width: 100%; height: auto; }
 @media (pointer: coarse) {
   .window-nudge button { width: 44px; height: 44px; }
   .window-nudge button.as-text { width: auto; height: auto; }
+  .window-nudge button.commit { width: auto; height: 44px; padding: 0 16px; }
 }
 
 /* ---------- a unit that does not exist yet ---------- */

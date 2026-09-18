@@ -362,7 +362,15 @@ export default function PlanMap({
       ? spotAt(view(camera), host.ring, px, py, maxFloor, result.host.floorHeight, host.height)
       : null;
 
-  /** Commit a placement: the page asks the engine, the marker lets go. */
+  /**
+   * Commit a placement: the page asks the engine, the marker lets go.
+   *
+   * A drag ends when the finger lifts, so it commits itself. The buttons have no
+   * such moment — walking a marker down a ninety-metre slab is thirty presses,
+   * and asking after each one is thirty analyses for one question, every one of
+   * them about a flat nobody was choosing. So they only move the marker, and the
+   * question waits for the press that says the marker has arrived.
+   */
   const place = (spot: Spot) => {
     onPlaceWindow(makeProjection(result.origin).toLatLng(spot.at[0], spot.at[1]), spot.floor);
     setPlacing(null);
@@ -377,23 +385,29 @@ export default function PlanMap({
    * that actually moves the way the arrow points is the one taken.
    */
   const nudge = (dir: 1 | -1) => {
-    if (!host || busy) return;
+    if (!host) return;
     const [mx, my] = marker.at;
     const forward = walkOutline(mx, my, host.ring, NUDGE_M);
     const back = walkOutline(mx, my, host.ring, -NUDGE_M);
     const v = view(camera);
     const rightwards = v.sx(forward[0], forward[1]) >= v.sx(back[0], back[1]);
     const next = rightwards === dir > 0 ? forward : back;
-    place({ at: next, floor: marker.floor });
+    setPlacing({ at: next, floor: marker.floor });
   };
 
   /** Up and down the block, one storey at a time, without leaving the drawing. */
   const step = (dir: 1 | -1) => {
-    if (busy) return;
     const next = Math.min(maxFloor, Math.max(1, marker.floor + dir));
     if (next === marker.floor) return;
-    place({ at: marker.at, floor: next });
+    setPlacing({ at: marker.at, floor: next });
   };
+
+  // A marker moved by button stands there until it is asked about, which leaves
+  // it free to disagree with the report beside it. That is the point while the
+  // reader is still moving it — and wrong the moment the storey or the window
+  // is set from anywhere else, because then the drawing would be showing a spot
+  // nobody had chosen any more.
+  useEffect(() => setPlacing(null), [windowAt, floor]);
 
   const swivel = (by: number) => setAzimuth((a) => a + by);
   const tilt = (by: number) => setPitch((p) => clampPitch(p + by));
@@ -559,22 +573,33 @@ export default function PlanMap({
       {nudging ? (
         <div className="window-nudge">
           <span>Window</span>
-          <button onClick={() => nudge(-1)} disabled={!host || busy}
+          <button onClick={() => nudge(-1)} disabled={!host}
             aria-label={`Move the window ${NUDGE_M} metres left along the block`} title="Move left along the wall">
             <Glyph d="M13 9H5M8.5 5.5 5 9l3.5 3.5" />
           </button>
-          <button onClick={() => nudge(1)} disabled={!host || busy}
+          <button onClick={() => nudge(1)} disabled={!host}
             aria-label={`Move the window ${NUDGE_M} metres right along the block`} title="Move right along the wall">
             <Glyph d="M5 9h8M9.5 5.5 13 9l-3.5 3.5" />
           </button>
-          <button onClick={() => step(1)} disabled={busy || marker.floor >= maxFloor}
+          <button onClick={() => step(1)} disabled={!host || marker.floor >= maxFloor}
             aria-label="Up one storey" title="Up one storey">
             <Glyph d="M9 14V4M4.5 8.5 9 4l4.5 4.5" />
           </button>
-          <button onClick={() => step(-1)} disabled={busy || marker.floor <= 1}
+          <button onClick={() => step(-1)} disabled={!host || marker.floor <= 1}
             aria-label="Down one storey" title="Down one storey">
             <Glyph d="M9 4v10M4.5 9.5 9 14l4.5-4.5" />
           </button>
+          {/* Only here once the marker has been moved and not yet asked about:
+              a button that does nothing is a button that has to be read first. */}
+          {placing && (
+            <button className="commit" onClick={() => place(placing)} disabled={busy}>
+              {/* Naming the storey where the storey is what changed: the panel
+                  beside the drawing still shows the one being reported on, and
+                  until this is pressed that is the truthful thing for it to
+                  show. Sideways along one floor, there is no number to give. */}
+              {placing.floor === floor ? "Check here" : `Check storey ${placing.floor}`}
+            </button>
+          )}
           {!host && <small>no block here to move along</small>}
           <button className="as-text" onClick={() => setNudging(false)}>Hide</button>
         </div>
