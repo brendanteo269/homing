@@ -293,15 +293,25 @@ function classify(tags: Record<string, string>, area: number): Building["kind"] 
 export const FLOOR_HEIGHT_M: Record<Building["kind"], number> = { hdb: 2.9, residential: 3.15, other: 3.8 };
 const ROOF_PLANT_M: Record<Building["kind"], number> = { hdb: 4.5, residential: 4.0, other: 2.0 };
 
+/**
+ * Storeys before metres, which is the opposite of what it looks like it should
+ * be — a measurement ought to beat a count multiplied by an assumption.
+ *
+ * It is not a measurement. Checked against HDB's register on the 12,878 blocks
+ * both sources describe, `building:levels` lands on the right storey count for
+ * 98% of them, median error nil. The `height` tag on the same blocks runs a
+ * median 3.9 m tall and a p90 13.9 m tall, and only a quarter are within 3 m.
+ * The tag itself says why: a third of every height in Singapore's OSM is
+ * exactly "10", and the next commonest are 15, 12, 18, 20 and 50. They are
+ * round numbers somebody estimated, not anything anybody measured.
+ *
+ * So a height tag is now the fallback, for the buildings that carry one and no
+ * storey count at all. Re-run the comparison before putting it back.
+ */
 function resolveHeight(
   tags: Record<string, string>,
   kind: Building["kind"],
 ): { height: number; heightSource: HeightSource; levels: number | null } {
-  const explicit = Number.parseFloat(tags.height ?? tags["building:height"] ?? "");
-  if (Number.isFinite(explicit) && explicit > 1) {
-    return { height: explicit, heightSource: "height-tag", levels: parseLevels(tags) };
-  }
-
   const levels = parseLevels(tags);
   if (levels) {
     return {
@@ -309,6 +319,11 @@ function resolveHeight(
       heightSource: "levels-tag",
       levels,
     };
+  }
+
+  const explicit = Number.parseFloat(tags.height ?? tags["building:height"] ?? "");
+  if (Number.isFinite(explicit) && explicit > 1) {
+    return { height: explicit, heightSource: "height-tag", levels: null };
   }
 
   return { height: 0, heightSource: "inferred", levels: null };
