@@ -45,7 +45,7 @@ export function computeBlockage(
  * sky — end up neighbours. Anything that reads runs along this array then
  * splits one open arc in two and welds two unrelated ones together.
  */
-function frontBearings(facing: number): number[] {
+export function frontBearings(facing: number): number[] {
   const left = Math.round(wrap360(facing)) - 90;
   return Array.from({ length: 180 }, (_, k) => (((left + k) % 360) + 360) % 360);
 }

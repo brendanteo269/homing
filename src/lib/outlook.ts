@@ -55,7 +55,14 @@ export interface OutlookMetrics {
    * permits something tall, while here the blocks are drawn and the flats are
    * sold.
    */
-  launches: { label: string; arcDegrees: number; distance: number; bearing: number }[];
+  launches: {
+    label: string;
+    arcDegrees: number;
+    distance: number;
+    bearing: number;
+    /** When it is due, as YYYY-MM, where the launch says. */
+    completion: string | null;
+  }[];
   /** What is doing the protecting, widest first. */
   protectors: { label: string; arcDegrees: number; distance: number; bearing: number }[];
   /** Durable foregrounds, currently water only, widest first. */
@@ -157,7 +164,10 @@ export function computeOutlook(
   let durableForegroundDegrees = 0;
   let knownDegrees = 0;
   const protectors = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
-  const launches = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
+  const launches = new Map<
+    string,
+    { arcDegrees: number; distance: number; bearing: number; completion: string | null }
+  >();
   const durableForegrounds = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
   const zones = new Map<string, { arcDegrees: number; distance: number; bearing: number }>();
 
@@ -178,7 +188,7 @@ export function computeOutlook(
     // silent remainder of the others.
     let outcome: "secured" | "at-risk" | "unknown" = "secured";
     let credit: { label: string; distance: number } | null = null;
-    let launch: { label: string; distance: number } | null = null;
+    let launch: { label: string; distance: number; completion: string | null } | null = null;
     let durableForeground: { label: string; distance: number } | null = null;
     let firstZone: { use: string; gpr: string; distance: number } | null = null;
 
@@ -221,7 +231,9 @@ export function computeOutlook(
       const elevation = (Math.atan2(ceiling.height - z, d) * 180) / Math.PI;
       if (elevation >= CLEAR_DEG) {
         outcome = "at-risk";
-        if (ceiling.bto) launch = { label: ceiling.what, distance: d };
+        if (ceiling.bto) {
+          launch = { label: ceiling.what, distance: d, completion: ceiling.completion ?? null };
+        }
         break;
       }
       // A launched BTO is short enough to leave this direction open — and it is
@@ -287,7 +299,14 @@ export function computeOutlook(
           seen.arcDegrees++;
           if (launch.distance < seen.distance) seen.bearing = azimuth;
           seen.distance = Math.min(seen.distance, launch.distance);
-        } else launches.set(launch.label, { arcDegrees: 1, distance: launch.distance, bearing: azimuth });
+        } else {
+          launches.set(launch.label, {
+            arcDegrees: 1,
+            distance: launch.distance,
+            bearing: azimuth,
+            completion: launch.completion,
+          });
+        }
       }
       continue;
     }
@@ -341,14 +360,17 @@ function ceilingAt(
   x: number,
   y: number,
   cell: Cell,
-): { height: number; what: string; bto?: boolean } | null {
-  let best: { height: number; what: string; bto?: boolean } | null = null;
-  const take = (height: number, what: string, bto?: boolean) => {
-    if (!best || height < best.height) best = { height, what, bto };
+): { height: number; what: string; bto?: boolean; completion?: string | null } | null {
+  type Cap = { height: number; what: string; bto?: boolean; completion?: string | null };
+  let best: Cap | null = null;
+  const take = (height: number, what: string, bto?: boolean, completion?: string | null) => {
+    if (!best || height < best.height) best = { height, what, bto, completion };
   };
 
   for (const m of cell.monuments) if (pointInPolygon(x, y, m.ring)) take(0, `${m.name} (monument)`);
-  for (const c of cell.ceilings) if (pointInPolygon(x, y, c.ring)) take(c.height, c.what, c.bto);
+  for (const c of cell.ceilings) {
+    if (pointInPolygon(x, y, c.ring)) take(c.height, c.what, c.bto, c.completion);
+  }
   for (const zn of cell.zones) {
     const open = OPEN_LAND_CEILING_M[zn.use];
     if (open !== undefined && pointInPolygon(x, y, zn.ring)) take(open, zn.use.toLowerCase());

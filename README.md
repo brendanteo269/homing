@@ -24,6 +24,8 @@ npm run build-footprints   # needs osmium: brew install osmium-tool
 - Direct sun on the chosen wall, across the year and after 2pm.
 - A verdict for light, late-day warmth, and openness.
 - Nearby buildings, their distance, and how much of the view they block.
+- How overlooked the window is: the nearest home facing it, and how much of the view is somebody else's flat.
+- Anything already sold and going up in that view, with the storeys and the keys date.
 - A score out of 100 for how much of the still-open view cannot be built out, and why.
 - Nearby industry and infrastructure, named where OpenStreetMap names it, including whether it is shielded.
 
@@ -36,6 +38,8 @@ The score weights and reference values are open in [`src/lib/score.ts`](src/lib/
 - Private-building heights may be inferred. HDB heights use HDB's register where available.
 - The future-view check can only confirm published low-height ceilings. Plot ratio is not a building-height limit.
 - The industry figure is not a noise model. Road, rail, and aircraft noise are not yet included.
+- Overlooking counts homes only. An office or a multi-storey car park opposite looks in just as well and is not counted, because most of what else stands close to a flat is a substation or a bin centre that does not.
+- What is going up is only what has been launched and entered in `data/bto-sites.json`. Land sold for private development is not tracked yet, so silence there means unknown, not empty.
 - What a parcel is called comes from OpenStreetMap and is patchy: estates and depots are usually named, substations rarely. A parcel is named only where a matching feature covers it, so it says the zoning and nothing more rather than guess.
 
 ## Data and sources
@@ -48,6 +52,7 @@ HDB block data and URA Master Plan layers are from [data.gov.sg](https://data.go
 npm run analyse -- 560406 --floor 8
 npm run calibrate
 npm run check-outlook
+npm run check-privacy
 npm run build-footprints
 npm run typecheck
 npm run build

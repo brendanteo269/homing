@@ -191,6 +191,8 @@ export interface AnalysisResult {
    */
   ground: { kind: import("./outlook").GroundKind; ring: [number, number][] }[];
   noise: import("./noise").NoiseMetrics | null;
+  /** How much of what this window faces is somebody else's home, and how close. */
+  privacy: import("./privacy").PrivacyMetrics;
   confidence: Confidence;
   scores: Scores;
   tookMs: number;

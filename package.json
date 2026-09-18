@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "check-outlook": "tsx scripts/check-outlook.ts",
     "check-bto": "tsx scripts/check-bto.ts",
+    "check-privacy": "tsx scripts/check-privacy.ts",
     "analyse": "tsx scripts/analyse.ts",
     "calibrate": "tsx scripts/calibrate.ts",
     "build-hdb": "tsx scripts/build-hdb.ts",

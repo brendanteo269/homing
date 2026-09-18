@@ -40,6 +40,13 @@ export interface Ceiling {
    * can never be credited as ground that keeps a view open.
    */
   bto?: boolean;
+  /**
+   * When that building is due, as YYYY-MM, where the launch says. A date is
+   * what separates "something could go up here" from "something is going up
+   * here, and here is when" — and it is the half of the sentence a reader
+   * plans around.
+   */
+  completion?: string | null;
 }
 
 export interface Monument {

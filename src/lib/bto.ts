@@ -154,6 +154,7 @@ export async function btoCeilings(
       // Not a promise about a view — a building with a completion date. The
       // outlook engine reads this to rule the direction out, never to credit it.
       bto: true,
+      completion: site.completion ?? null,
     });
   }
   return ceilings;

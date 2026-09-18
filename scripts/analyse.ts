@@ -73,7 +73,7 @@ async function main() {
   const floor = flag("floor") ?? 8;
   const result = await analyse({ ...point, address, floor, face: flag("face") });
 
-  const { sun, blockage, scores, confidence, viewpoint, outlook, noise } = result;
+  const { sun, blockage, scores, confidence, viewpoint, outlook, noise, privacy } = result;
   const line = (k: string, v: string) => console.log(`  ${k.padEnd(26)}${v}`);
 
   console.log(`\n${label}`);
@@ -136,6 +136,13 @@ async function main() {
     for (const p of outlook.protectors.slice(0, 4)) {
       console.log(`  ${p.label.padEnd(34)} ${String(p.arcDegrees).padStart(3)}° of view, from ${p.distance} m`);
     }
+    if (outlook.launches.length) {
+      console.log("\nGoing up in this view");
+      for (const l of outlook.launches) {
+        const due = l.completion ? `keys ${l.completion}` : "completion not announced";
+        console.log(`  ${l.label.slice(0, 40).padEnd(40)} ${String(l.distance).padStart(4)} m ${compassName(l.bearing).padEnd(3)} ${String(l.arcDegrees).padStart(3)}° of view, ${due}`);
+      }
+    }
     if (outlook.zones.length) {
       console.log("\nWhat the land in front is zoned for");
       for (const z of outlook.zones.slice(0, 6)) {
@@ -153,6 +160,14 @@ async function main() {
       console.log(`  ${s2.use.slice(0, 34).padEnd(34)} ${String(s2.distance).padStart(4)} m  ${compassName(s2.bearing).padEnd(3)}  ${how}`);
     }
     if (!noise.sources.length) console.log("  nothing zoned industrial within " + noise.reachM + " m");
+  }
+
+  console.log(`\nOverlooked (homes only, within ${privacy.reachM} m)`);
+  line("privacy", `${privacy.privacy}/100`);
+  line("homes in front", `${privacy.facingDegrees}° of 180${privacy.closeDegrees ? `, ${privacy.closeDegrees}° of it close in` : ""}`);
+  line("nearest home facing you", fmtDistance(privacy.nearestM));
+  for (const n of privacy.neighbours.slice(0, 4)) {
+    console.log(`  ${n.label.slice(0, 34).padEnd(34)} ${String(n.distance).padStart(4)} m  ${compassName(n.bearing).padEnd(3)}  ${String(n.arcDegrees).padStart(3)}° of view`);
   }
 
   line("storeys from HDB", `${confidence.fromHdbRegister} blocks`);

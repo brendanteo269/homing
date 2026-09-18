@@ -9,6 +9,7 @@ import { btoCeilings, btoSiteAt } from "./bto";
 import { masterPlanNear } from "./masterplan";
 import { REACH_M as NOISE_REACH_M, computeNoise } from "./noise";
 import { computeOutlook, groundKind } from "./outlook";
+import { computePrivacy } from "./privacy";
 import { normaliseStreet } from "./street";
 import type { AnalysisResult, Building, Confidence, LatLng, Viewpoint } from "./types";
 
@@ -97,6 +98,9 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
   const horizon = computeHorizon(viewpoint, buildings);
   const sun = computeSunMetrics(viewpoint, horizon, origin);
   const blockage = computeBlockage(viewpoint, horizon, buildings);
+  // Same cast, opposite question: not how much sky is left, but how much of
+  // what is left is a neighbour's window.
+  const privacy = computePrivacy(viewpoint, horizon, buildings);
 
   // The plan is asked about further out than the buildings are: a works estate
   // half a kilometre off is still audible, long after it has stopped being
@@ -179,6 +183,7 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
     outlook,
     ground,
     noise,
+    privacy,
     confidence: summariseConfidence(buildings, blockage, dataTimestamp),
     scores,
     tookMs: Date.now() - started,

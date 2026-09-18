@@ -612,6 +612,22 @@ export default function Home() {
             </section>
           )}
 
+          <section className="card">
+            <h2>Overlooked</h2>
+            <p className="hint" style={{ marginTop: 0, marginBottom: 16 }}>
+              {overlookedLine(result)}
+            </p>
+            {result.privacy.neighbours.map((n) => (
+              <Datum
+                key={n.id}
+                what={n.label}
+                where={`${n.distance} m ${relative(n.bearing, result.viewpoint.facing)}`}
+                amount={share(n.arcDegrees)}
+                note="of your view"
+              />
+            ))}
+          </section>
+
         </details>
       )}
 
@@ -654,6 +670,31 @@ function clockLabel(minutes: number) {
 }
 
 /** One finding, read as a sentence with its number on the end. */
+/**
+ * How overlooked this window is, as a sentence rather than a score.
+ *
+ * The distance leads because it is the fact somebody can picture. A share of
+ * the view is the honest measure and a useless opener: "89 out of 100" reads
+ * as private right up until you learn the block is 34 m away.
+ */
+function overlookedLine(result: AnalysisResult) {
+  const { privacy, facingDegrees, closeDegrees, nearestM, reachM } = result.privacy;
+  if (facingDegrees === 0) {
+    return `No home faces this window within ${reachM} m. Only homes are counted — an office or a car park opposite is not.`;
+  }
+  const close = closeDegrees > 0 ? ` ${share(closeDegrees)} of it is close enough to see into the room.` : "";
+  return `The nearest home facing this window is ${Math.round(nearestM)} m away, and homes fill ${share(
+    facingDegrees,
+  )} of what it looks at.${close} That scores ${privacy} out of 100 for privacy, higher being more private.`;
+}
+
+/** "2031-06" as something a reader says out loud. */
+function monthYear(iso: string) {
+  const [year, month] = iso.split("-");
+  const name = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(month) - 1];
+  return name ? `${name} ${year}` : iso;
+}
+
 function Datum({ what, where, amount, note }: { what: string; where: string; amount: string; note?: string }) {
   return (
     <div className="datum">
@@ -700,6 +741,27 @@ function OutlookStory({ result }: { result: AnalysisResult }) {
       <div className="outlook-story">
         <p>{whyItLasts(outlook, open, secured, widest)}</p>
       </div>
+      {/* The one part of "at risk" that is not a permission but a building.
+          It sits above the planning detail rather than inside it: a reader who
+          never opens the workings still has to be told that something is going
+          up in front of them, and when. */}
+      {outlook.launches.length > 0 && (
+        <div className="coming">
+          <h3>Going up in this view</h3>
+          {outlook.launches.map((l) => (
+            <Datum
+              key={l.label}
+              what={l.label}
+              where={`${l.distance} m ${relative(l.bearing, result.viewpoint.facing)} · ${
+                l.completion ? `keys from ${monthYear(l.completion)}` : "completion not announced"
+              }`}
+              amount={share(l.arcDegrees)}
+              note="of your view"
+            />
+          ))}
+          <p className="hint">Sold and announced, not yet built — so this is a building with a date, not a zoning risk.</p>
+        </div>
+      )}
       <details className="outlook-details">
         <summary>See the planning detail</summary>
         <p className="hint outlook-explainer">
