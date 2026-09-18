@@ -107,12 +107,12 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
   // launches in as ceilings lets the outlook engine read them with everything
   // else rather than learning a second kind of answer.
   plan.ceilings.push(...(await btoCeilings(plan, projection)));
-  // Standing on a launched site is the one case where there is no building to
-  // report and still something to say about where the pin is. A site with a
-  // block already standing on it is not one of those, so the building wins —
-  // and where that building was only the nearest one to the pin, the host card
-  // already says so in as many words.
-  const bto = host ? null : await btoSiteAt(plan, projection, viewpoint.x, viewpoint.y);
+  // Which launch this window belongs to, if any — asked whether or not a block
+  // was found. Most launched sites turn out to be drawn in OpenStreetMap within
+  // months of the launch, so the usual case is a real footprint standing on a
+  // site whose flats will not be handed over for years, and the reader needs
+  // both facts: the block they are standing in, and that nobody lives in it yet.
+  const bto = await btoSiteAt(plan, projection, viewpoint.x, viewpoint.y);
   const known = plan.zones.length > 0 || plan.ceilings.length > 0;
   const outlook = known
     ? computeOutlook(viewpoint, plan, (azimuth) => horizon.elevation[((Math.round(azimuth) % 360) + 360) % 360])

@@ -51,7 +51,17 @@ let loading: Promise<BtoSite[]> | null = null;
  * back to calling a sold site "unknown" with no sign that it knew better.
  */
 export function loadBtoSites(): Promise<BtoSite[]> {
-  loading ??= readFile(DATA_FILE, "utf8")
+  // Unlike the gzipped data files, this one is edited by hand — so in
+  // development it is read again every time. Adding a launch, seeing the app
+  // ignore it, and losing half an hour to a module-level cache is not a lesson
+  // worth teaching twice.
+  if (process.env.NODE_ENV !== "production") return read();
+  loading ??= read();
+  return loading;
+}
+
+function read(): Promise<BtoSite[]> {
+  return readFile(DATA_FILE, "utf8")
     .then((text) => (JSON.parse(text) as { sites?: BtoSite[] }).sites ?? [])
     .catch((err: NodeJS.ErrnoException) => {
       if (err?.code !== "ENOENT") {
@@ -59,7 +69,6 @@ export function loadBtoSites(): Promise<BtoSite[]> {
       }
       return [];
     });
-  return loading;
 }
 
 /** Roof height of a block of this many storeys, at HDB's own residential rates. */

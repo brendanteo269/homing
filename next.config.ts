@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
       "./data/masterplan.json.gz",
       "./data/bto-sites.json",
     ],
+    "/api/launches": ["./data/bto-sites.json"],
   },
 };
 

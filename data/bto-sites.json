@@ -8,9 +8,11 @@
     "useless, because HDB has announced the storeys and sold the flats. One",
     "point and one number here turns that direction into a definite answer.",
     "",
-    "No polygon is drawn by hand. `at` only has to land inside the site; the",
-    "outline comes from the Master Plan parcel under it, which is authoritative",
-    "and stays right when the plan is rebuilt. Run `npm run check-bto` after",
+    "No polygon is drawn by hand. `at` has two jobs: it picks out the Master Plan",
+    "parcel the site sits in, and it is where a reader lands when they choose the",
+    "launch \u2014 so it aims at the middle of the tallest block, not at the address",
+    "point, which OneMap puts at a void deck or a gate. Run `npm run check-bto`",
+    "after editing: it prints the parcel matched and the block landed in.",
     "editing to see which parcel each point picked up.",
     "",
     "`storeys` is the TALLEST block on the site, because the question this",
@@ -35,10 +37,121 @@
       },
       "sources": [
         "https://www.btohq.com/bto-project-spec/lakeview-cascadia",
-        "https://www.homeanddecor.com.sg/property/hdb/lakeview-cascadia-bto-review-5-minutes-marymount-mrt-long-4-25-years-building-time",
         "OneMap gazetteer: searchVal=Lakeview Cascadia"
       ],
-      "note": "Five blocks, 18-40 storeys, Prime, bounded by Upper Thomson Road. HDB does not publish which block is which height, so `storeys` is the tallest. Point is OneMap's own for the project name, and lands in the vacant GPR 3.9 parcel 360 m west of Marymount MRT."
+      "note": "Prime, bounded by Upper Thomson Road. Lands in the vacant GPR 3.9 parcel 360 m west of Marymount MRT."
+    },
+    {
+      "name": "Kebun Baru Breeze",
+      "town": "Ang Mo Kio",
+      "launch": "2026-06",
+      "completion": "2031-09",
+      "blocks": 2,
+      "storeys": 30,
+      "units": 579,
+      "at": {
+        "lat": 1.36821,
+        "lng": 103.83221
+      },
+      "sources": [
+        "https://www.btohq.com/bto-project-spec/kebun-baru-breeze",
+        "Point: deepest interior point of the tallest block OpenStreetMap draws on the parcel OneMap places this project in"
+      ],
+      "note": "Plus, between Ang Mo Kio Ave 1 and Ang Mo Kio Rise. Both blocks 30 storeys; one carries 58 rental flats."
+    },
+    {
+      "name": "Kebun Baru Ridge",
+      "town": "Ang Mo Kio",
+      "launch": "2026-06",
+      "completion": "2030-03",
+      "blocks": 3,
+      "storeys": 21,
+      "storeysLow": 20,
+      "units": 485,
+      "at": {
+        "lat": 1.3768,
+        "lng": 103.83544
+      },
+      "sources": [
+        "https://www.btohq.com/bto-project-spec/kebun-baru-ridge",
+        "Point: deepest interior point of the tallest block OpenStreetMap draws on the parcel OneMap places this project in"
+      ],
+      "note": "Plus, along Ang Mo Kio Ave 2, opposite CHIJ St Nicholas Girls' School."
+    },
+    {
+      "name": "Berlayar Rise",
+      "town": "Bukit Merah",
+      "launch": "2026-06",
+      "completion": "2031-09",
+      "blocks": 6,
+      "storeys": 49,
+      "storeysLow": 33,
+      "units": 1976,
+      "at": {
+        "lat": 1.26995,
+        "lng": 103.80969
+      },
+      "sources": [
+        "https://www.btohq.com/bto-project-spec/berlayar-rise",
+        "Point: deepest interior point of the tallest block OpenStreetMap draws on the parcel OneMap places this project in"
+      ],
+      "note": "Prime, and the tallest of the exercise at 49 storeys."
+    },
+    {
+      "name": "Sembawang Brook",
+      "town": "Sembawang",
+      "launch": "2026-06",
+      "completion": "2029-12",
+      "blocks": 5,
+      "storeys": 30,
+      "storeysLow": 26,
+      "units": 1160,
+      "at": {
+        "lat": 1.45996,
+        "lng": 103.81472
+      },
+      "sources": [
+        "https://www.btohq.com/bto-project-spec/sembawang-brook",
+        "Point: deepest interior point of the tallest block OpenStreetMap draws on the parcel OneMap places this project in"
+      ],
+      "note": "Standard. One block carries 200 standalone rental flats."
+    },
+    {
+      "name": "Sembawang Portico",
+      "town": "Sembawang",
+      "launch": "2026-06",
+      "completion": "2029-09",
+      "blocks": 3,
+      "storeys": 26,
+      "units": 875,
+      "at": {
+        "lat": 1.45903,
+        "lng": 103.81422
+      },
+      "sources": [
+        "https://www.btohq.com/bto-project-spec/sembawang-portico",
+        "Point: deepest interior point of the tallest block OpenStreetMap draws on the parcel OneMap places this project in"
+      ],
+      "note": "Standard, and the shortest wait of the exercise. All three blocks 26 storeys."
+    },
+    {
+      "name": "Woodgrove Acres",
+      "town": "Woodlands",
+      "launch": "2026-06",
+      "completion": "2030-09",
+      "blocks": 5,
+      "storeys": 19,
+      "storeysLow": 15,
+      "units": 656,
+      "at": {
+        "lat": 1.42748,
+        "lng": 103.78216
+      },
+      "sources": [
+        "https://www.btohq.com/bto-project-spec/woodgrove-acres",
+        "Point: deepest interior point of the tallest block OpenStreetMap draws on the parcel OneMap places this project in"
+      ],
+      "note": "Standard, along Woodgrove Avenue. 261 rental units across four of the blocks."
     }
   ]
 }

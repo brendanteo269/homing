@@ -162,10 +162,15 @@ button { font: inherit; color: inherit; }
 
 /* ---------- layout ---------- */
 .summary-grid {
-  display: grid; grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.8fr);
+  display: grid;
+  grid-template-columns: minmax(170px, 0.5fr) minmax(240px, 0.85fr) minmax(0, 1.8fr);
   gap: 12px; margin-top: 16px; align-items: start;
 }
 .summary-stack { display: grid; gap: 12px; }
+/* The launch list is the first thing to go: it is a way in, not part of the
+   report, and the report is what the narrow screen is for. Below 620 the
+   remaining two columns stack. */
+@media (max-width: 1080px) { .summary-grid { grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.8fr); } }
 @media (max-width: 620px) { .summary-grid { grid-template-columns: 1fr; } }
 
 .card {
@@ -568,4 +573,57 @@ canvas { display: block; width: 100%; height: auto; }
 .bto-line {
   margin-top: 4px;
   font-size: 12px; color: var(--faint);
+}
+
+/* ---------- launches sidebar ---------- */
+/* These cannot be searched for: no gazetteer carries a BTO project until the
+   blocks are standing, which is years after the flats are sold. Being listed
+   is the only way in, so the list is a fixture rather than a suggestion. */
+.launches {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 14px;
+}
+.launches > h2 {
+  font-family: var(--sans); font-size: 18px; font-weight: 700;
+  letter-spacing: -0.015em; color: var(--ink); margin-bottom: 10px;
+}
+.launch-group + .launch-group { margin-top: 12px; }
+.launch-group > h3 {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--faint);
+  margin-bottom: 6px;
+}
+.launches button {
+  display: block; width: 100%; text-align: left;
+  padding: 7px 9px; margin-bottom: 4px;
+  background: none; color: var(--ink);
+  border: 1px solid var(--line-bright); border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.launches button b { display: block; font-size: 13px; font-weight: 600; }
+.launches button span {
+  display: block; margin-top: 1px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+}
+.launches button:hover { border-color: var(--faint); }
+.launches button:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
+/* The chosen one is marked the way the side buttons are, so the page has one
+   idea of what "selected" looks like. */
+.launches button[aria-pressed="true"] {
+  background: var(--ink); border-color: var(--ink);
+}
+.launches button[aria-pressed="true"] b { color: var(--panel); }
+.launches button[aria-pressed="true"] span { color: var(--line-bright); }
+.launches .hint { margin-top: 10px; font-size: 11px; }
+/* Without a third column to sit in, it goes across the top instead of being
+   dropped. Nobody can guess "Kebun Baru Breeze" into a search box, so a phone
+   needs the list as much as a desktop does — it just needs it to lie down. */
+@media (max-width: 1080px) {
+  .launches { grid-column: 1 / -1; padding: 12px 14px; }
+  .launches > h2 { font-size: 15px; margin-bottom: 8px; }
+  .launch-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .launch-group > h3 { margin-bottom: 0; margin-right: 2px; }
+  .launches button { width: auto; margin-bottom: 0; }
+  .launches .hint { margin-top: 8px; }
 }

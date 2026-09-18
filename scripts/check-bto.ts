@@ -61,7 +61,30 @@ async function main() {
     const implied = Number.isFinite(gpr) ? ` (${Math.round((area * gpr) / 1000)}k m² permitted)` : "";
 
     console.log(`  parcel: ${parcel.use}, plot ratio ${parcel.gpr}, ${Math.round(area).toLocaleString()} m²${implied}`);
-    console.log(`  ${standing.length === 0 ? "✓ vacant" : `⚠ ${standing.length} building(s) already standing on it`}`);
+
+    // Which block the pin lands in, because landing in the bin centre beside a
+    // forty-storey tower is the failure this file is most likely to have, and
+    // it looks exactly like success from every other angle.
+    const under = buildings.find((b) => pointInPolygon(0, 0, b.ring));
+    const homes = standing.filter((b) => b.kind === "hdb" || b.kind === "residential");
+    const tallest = homes.sort((a, b) => b.height - a.height)[0];
+    if (standing.length === 0) {
+      console.log("  ✓ nothing drawn on it yet — the reader gets a bare site");
+    } else {
+      console.log(`  ${homes.length} block(s) drawn, tallest ${tallest ? `${tallest.height.toFixed(0)} m (${tallest.levels ?? "?"} storeys)` : "—"}`);
+      if (!under) {
+        bad++;
+        console.log("  ✗ the point is in none of them — a reader choosing this launch lands outside the blocks");
+      } else if (tallest && under.height < tallest.height * 0.6) {
+        bad++;
+        console.log(`  ✗ the point is in a ${under.height.toFixed(0)} m building, well short of the tallest — check it is not an outbuilding`);
+      } else {
+        console.log(`  ✓ the point is in a ${under.height.toFixed(0)} m block`);
+      }
+      if (site.blocks && homes.length !== site.blocks) {
+        console.log(`  note: ${homes.length} blocks drawn, ${site.blocks} published — the rest may not be mapped yet`);
+      }
+    }
     if (parcel.use !== "RESIDENTIAL") {
       bad++;
       console.log(`  ✗ zoned ${parcel.use}, not RESIDENTIAL — check the coordinate`);

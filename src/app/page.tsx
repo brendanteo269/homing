@@ -8,6 +8,7 @@ import YearChart from "@/components/YearChart";
 import { compassName } from "@/lib/blockage";
 import { formatMinutes } from "@/lib/score";
 import { isShortFormPostal, looksLikePostalPrefix, parsePostal } from "@/lib/postal";
+import type { BtoSite as Launch } from "@/lib/bto";
 import type { AddressHit } from "@/lib/onemap";
 import type { AnalysisResult, LatLng } from "@/lib/types";
 
@@ -58,6 +59,15 @@ export default function Home() {
   const [windowAt, setWindowAt] = useState<LatLng | null>(null);
   const [timeMinutes, setTimeMinutes] = useState(16 * 60);
   const [season, setSeason] = useState(SEASONS[3]);
+
+  // The launches, fetched once. They are a short fixed list, not a search.
+  const [launches, setLaunches] = useState<Launch[]>([]);
+  useEffect(() => {
+    fetch("/api/launches")
+      .then((r) => r.json())
+      .then((j: { launches?: Launch[] }) => setLaunches(j.launches ?? []))
+      .catch(() => setLaunches([]));
+  }, []);
 
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [busy, setBusy] = useState(true);
@@ -114,6 +124,22 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [query]);
 
+  /**
+   * A launch has no postal code and no street — nothing a geocoder would give
+   * back — so it is chosen directly rather than through the address path.
+   */
+  const chooseLaunch = useCallback((site: Launch) => {
+    setPoint({ lat: site.at.lat, lng: site.at.lng });
+    setLabel(site.name);
+    setPostal(null);
+    setAddress(null);
+    setFace(undefined);
+    setWindowAt(null);
+    setQuery("");
+    setHits([]);
+    setSearchNote(null);
+  }, []);
+
   const goHome = useCallback(() => {
     setPoint(START.point);
     setLabel(START.label);
@@ -155,7 +181,7 @@ export default function Home() {
   // A launched BTO has no building yet, so `host` is null — but its storeys are
   // announced, which is better evidence than anything inferred from a footprint.
   const bto = result?.bto ?? null;
-  const storeys = host?.levels ?? (host ? Math.round((host.height - 4) / 3) : (bto?.storeys ?? null));
+  const storeys = host?.levels ?? (host ? Math.round((host.height - 4) / 3) : null) ?? bto?.storeys ?? null;
   // 25 is the last resort for a pin with no building and no launch under it: a
   // slider has to stop somewhere, and it is not a claim about this address.
   const maxFloor = Math.max(storeys ?? 25, 4);
@@ -274,17 +300,45 @@ export default function Home() {
       </div>
 
       <div className="summary-grid">
+        {/* Grouped by sales exercise, because that is how a buyer holds them:
+            a launch is a single decision with one application window, and the
+            seven projects in it are the options inside that decision. */}
+        {launches.length > 0 && (
+          <aside className="launches" aria-label="New BTO launches">
+            <h2>New launches</h2>
+            {groupByLaunch(launches).map(([exercise, sites]) => (
+              <div className="launch-group" key={exercise}>
+                <h3>{monthName(exercise)}</h3>
+                {sites.map((site) => (
+                  <button
+                    key={site.name}
+                    type="button"
+                    aria-pressed={result?.bto?.name === site.name}
+                    onClick={() => chooseLaunch(site)}
+                  >
+                    <b>{site.name}</b>
+                    <span>
+                      {site.town} · {site.storeysLow ? `${site.storeysLow}–${site.storeys}` : site.storeys} storeys
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+            <p className="hint">Sold, not yet built. Keys from {earliestKeys(launches)}.</p>
+          </aside>
+        )}
+
         <div className="summary-stack">
           <section className="card unit-card">
             <h2>The unit</h2>
             <div className="unit-name">
               {bto && <span className="bto-tag">BTO</span>}
-              {bto ? bto.name : label}
+              {label}
             </div>
             {bto && (
               <div className="bto-line">
-                Launched {monthName(bto.launch)}
-                {bto.completion ? `, due ${monthName(bto.completion)}` : ""} · {bto.town}
+                {bto.name} · launched {monthName(bto.launch)}
+                {bto.completion ? `, keys from ${monthName(bto.completion)}` : ""}
               </div>
             )}
             <div className="hint" style={{ marginBottom: 18 }}>
@@ -304,6 +358,15 @@ export default function Home() {
               <div className="hint" style={{ marginBottom: 18 }}>
                 OpenStreetMap has no footprint at this address, so this is the nearest block,{" "}
                 {host.distanceFromPin} m away. Click the right one on the plan if it is not this.
+              </div>
+            )}
+            {/* Once the blocks are drawn this reads like every other report, so
+                the only thing left to say is that nobody has moved in. */}
+            {result && host && bto && (
+              <div className="hint" style={{ marginBottom: 18 }}>
+                This block is drawn and its {storeys} storeys are modelled, but it is not built yet —
+                the flats were sold in {monthName(bto.launch)}
+                {bto.completion ? ` and keys are from ${monthName(bto.completion)}` : ""}.
               </div>
             )}
             {result && !host && bto && (
@@ -536,6 +599,23 @@ export default function Home() {
       </p>
     </main>
   );
+}
+
+/** Launches by sales exercise, newest first. One exercise is one decision. */
+function groupByLaunch(launches: Launch[]): [string, Launch[]][] {
+  const groups = new Map<string, Launch[]>();
+  for (const site of launches) {
+    const got = groups.get(site.launch);
+    if (got) got.push(site);
+    else groups.set(site.launch, [site]);
+  }
+  return [...groups].sort((a, b) => b[0].localeCompare(a[0]));
+}
+
+/** The first of these anybody gets to live in. */
+function earliestKeys(launches: Launch[]) {
+  const dates = launches.map((l) => l.completion).filter((d): d is string => !!d).sort();
+  return dates.length > 0 ? monthName(dates[0]) : "2029 onwards";
 }
 
 /** "2026-06" as "Jun 2026". Launch and completion are only ever known to a month. */
