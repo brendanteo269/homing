@@ -214,10 +214,9 @@ export default function Home() {
     <main className="page">
       <div className="masthead">
         <h1>Homing</h1>
-        <span className="tag">prototype</span>
       </div>
       <p className="lede">
-        How much sun a flat gets, and what blocks its view.
+        How much sun a house gets, and what blocks its view.
       </p>
 
       <div className="search-row">
@@ -509,9 +508,7 @@ export default function Home() {
 
       <p className="footnote">
         <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors (ODbL)
-        and <a href="https://www.onemap.gov.sg/">OneMap</a>. Nobody pays for this answer. Your
-        window is placed mid-wall; ground is assumed flat; balconies and trees are not modelled.
-        A prototype, not advice.
+        and <a href="https://www.onemap.gov.sg/">OneMap</a>.
       </p>
     </main>
   );
