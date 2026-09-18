@@ -108,12 +108,8 @@ const NUDGE_M = 4;
 const STOREY_MIN_PX = 16;
 /** Below this the storeys are closer together than the lines drawing them. */
 const STOREY_LEGIBLE_PX = 3.5;
-/**
- * How far off the block a press may land and still be a press on it, in screen
- * pixels. Wide enough to forgive a finger on the silhouette's edge, narrow
- * enough that a press on the street beside it still turns the view.
- */
-const PLACE_REACH_PX = 9;
+/** How far under the ground a press may round before it is the road, in metres. */
+const GRAZE_M = 0.05;
 
 /**
  * The street map, for the reader who wants to know where this is.
@@ -326,8 +322,17 @@ export default function PlanMap({
   const blockAt = (px: number, py: number) => {
     const ctx = ref.current?.getContext("2d");
     if (!ctx) return null;
+    // The paths are drawn through the canvas's transform and tested without it:
+    // isPointInPath takes its point in device pixels whatever the transform is.
+    // So the point goes through the transform by hand, or every question about
+    // the drawing is asked at a fraction of where the pointer actually is —
+    // half of it on a retina screen, which named the block a hundred metres up
+    // and to the left of the one under the cursor.
+    const m = ctx.getTransform();
+    const dx = px * m.a + py * m.c + m.e;
+    const dy = px * m.b + py * m.d + m.f;
     for (let i = hits.current.length - 1; i >= 0; i--) {
-      if (ctx.isPointInPath(hits.current[i].path, px, py)) return hits.current[i].id;
+      if (ctx.isPointInPath(hits.current[i].path, dx, dy)) return hits.current[i].id;
     }
     return null;
   };
@@ -337,13 +342,25 @@ export default function PlanMap({
    * nearest point of the block's outline. That is also what keeps a courtyard
    * reachable: the inside of a C is as much a part of the outline as the front.
    */
-  const snap = (px: number, py: number): Spot =>
-    host && result.host
-      ? spotAt(view(camera), host.ring, px, py, maxFloor, (k) => eyeHeight(result, k))
-      : { at: view(camera).ground(px, py), floor: marker.floor, miss: Infinity };
-
-  /** Was that press on the block? Asked in pixels, so zoom does not change it. */
-  const onBlock = (spot: Spot) => spot.miss * view(camera).kx < PLACE_REACH_PX;
+  /**
+   * What the reader is pointing at on their own block, if anything. Null is the
+   * answer everywhere else on the drawing, which is what leaves a press there
+   * free to turn the view instead.
+   *
+   * Two questions, and both have to say yes. The drawing knows which block a
+   * pixel belongs to, roof and base included, and that a tower in front hides
+   * the one behind — but not which storey, because a silhouette is one shape
+   * however many floors it holds. The footprint knows the storey exactly, but a
+   * footprint is a prism with no top and no bottom, so on its own it counts the
+   * sky above the roof and the road under the void deck as part of the block.
+   *
+   * Asking both is also what lets the name under the cursor promise something:
+   * a storey shows there exactly when a press would take it.
+   */
+  const snap = (px: number, py: number): Spot | null =>
+    host && result.host && blockAt(px, py) === result.viewpoint.hostId
+      ? spotAt(view(camera), host.ring, px, py, maxFloor, result.host.floorHeight, host.height)
+      : null;
 
   /** Commit a placement: the page asks the engine, the marker lets go. */
   const place = (spot: Spot) => {
@@ -367,7 +384,7 @@ export default function PlanMap({
     const v = view(camera);
     const rightwards = v.sx(forward[0], forward[1]) >= v.sx(back[0], back[1]);
     const next = rightwards === dir > 0 ? forward : back;
-    place({ at: next, floor: marker.floor, miss: 0 });
+    place({ at: next, floor: marker.floor });
   };
 
   /** Up and down the block, one storey at a time, without leaving the drawing. */
@@ -375,7 +392,7 @@ export default function PlanMap({
     if (busy) return;
     const next = Math.min(maxFloor, Math.max(1, marker.floor + dir));
     if (next === marker.floor) return;
-    place({ at: marker.at, floor: next, miss: 0 });
+    place({ at: marker.at, floor: next });
   };
 
   const swivel = (by: number) => setAzimuth((a) => a + by);
@@ -399,8 +416,12 @@ export default function PlanMap({
             // that is what the drawing is for — and the marker answers first
             // because it is the more specific target when the two overlap.
             const spot = snap(px, py);
-            if (!busy && (onMarker(px, py, e.currentTarget) || onBlock(spot))) {
-              setPlacing(spot);
+            if (!busy && (spot || onMarker(px, py, e.currentTarget))) {
+              // The dot stands a little clear of the wall so the sight lines do
+              // not start inside it, which can put its outer edge off the block
+              // by a pixel or two. Taking hold of it there is still taking hold
+              // of it, and the marker simply starts from where it already is.
+              setPlacing(spot ?? { at: marker.at, floor: marker.floor });
               return;
             }
             drag.current = { x: e.clientX, y: e.clientY, azimuth, pitch };
@@ -408,7 +429,10 @@ export default function PlanMap({
           onPointerMove={(e) => {
             if (placing) {
               const [px, py] = toCanvas(e.clientX, e.clientY, e.currentTarget);
-              setPlacing(snap(px, py));
+              // Off the block mid-drag the marker holds still rather than
+              // leaping to the nearest wall: a finger that has strayed into the
+              // sky has not chosen anything, and will come back.
+              setPlacing(snap(px, py) ?? placing);
               return;
             }
             const d = drag.current;
@@ -418,18 +442,19 @@ export default function PlanMap({
               const grabbable = !busy && onMarker(px, py, e.currentTarget);
               // The marker is the more specific target, so it keeps the pointer.
               const id = grabbable ? null : blockAt(px, py);
-              e.currentTarget.style.cursor = grabbable
-                ? "grab"
-                : !busy && onBlock(snap(px, py))
-                  ? "crosshair"
-                  : "";
+              const spot = busy || grabbable ? null : snap(px, py);
+              e.currentTarget.style.cursor = grabbable ? "grab" : spot ? "crosshair" : "";
               const b = id ? result.buildings.find((x) => x.id === id) : null;
               const box = e.currentTarget.getBoundingClientRect();
               const px2 = e.clientX - box.left;
               setHover(
                 b
                   ? {
-                      label: describeBuilding(b),
+                      // On your own block the name is not the useful half. A
+                      // storey is three pixels tall at the framing this opens
+                      // at, so the one thing a reader cannot judge by eye is
+                      // which one they are about to press.
+                      label: spot ? `${describeBuilding(b)} · storey ${spot.floor}` : describeBuilding(b),
                       x: px2,
                       y: e.clientY - box.top,
                       // Near the right edge the name would run off the drawing,
@@ -619,8 +644,6 @@ export const HOME: Camera = { azimuth: AZIMUTH_HOME, pitch: PITCH_HOME, zoom: 1,
 export interface Spot {
   at: [number, number];
   floor: number;
-  /** How far the press missed the block by, in metres. Infinity with no block. */
-  miss: number;
 }
 
 /** A placement being drawn, with the height that storey puts the eye at. */
@@ -631,7 +654,8 @@ interface Marker {
 }
 
 /**
- * Where on a block a press landed — along the wall, and how far up it.
+ * Where on a block a press landed — along the wall, and which storey. Null if
+ * the press was not on the block at all.
  *
  * The projection never divides by depth, so height only ever slides a point
  * straight up the canvas: whatever the reader pressed, the ground under it is
@@ -644,6 +668,13 @@ interface Marker {
  * afterwards is inside the building or behind it. Height follows from how far
  * along the ray that crossing sits, and the storey from the height.
  *
+ * Then the height is checked against the block, which is the half that makes
+ * this exact. A footprint is a prism with no top and no bottom: measuring a
+ * press against it alone counts the sky above the roof and the road under the
+ * void deck as parts of the building, and a press on either put a window in.
+ * Above the walls there is one thing left to be standing on, the roof, and that
+ * is the ray at roof height landing inside the outline.
+ *
  * Solved rather than searched. A scan storey by storey was close enough looking
  * square at a wall and a floor out at an angle to it, because consecutive
  * storeys land about four metres apart along the ground and an oblique wall
@@ -655,48 +686,50 @@ export function spotAt(
   px: number,
   py: number,
   maxFloor: number,
-  eyeOf: (floor: number) => number,
-): Spot {
+  floorHeight: number,
+  height: number,
+): Spot | null {
   const [gx, gy] = v.ground(px, py);
   const [ax, ay] = v.away;
+  /** Where on the ground the pressed pixel sits, if it were this far up. */
+  const under = (z: number): [number, number] => [gx - (z / v.rise) * ax, gy - (z / v.rise) * ay];
 
   // How far along the ray the pressed pixel meets the outline, measured from
   // the ground point under it. Only the crossing nearest the viewer counts.
   let far = -Infinity;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [px0, py0] = ring[j];
-    const ex = ring[i][0] - px0;
-    const ey = ring[i][1] - py0;
+    const [ex0, ey0] = ring[j];
+    const ex = ring[i][0] - ex0;
+    const ey = ring[i][1] - ey0;
     const det = ex * ay - ey * ax;
     if (Math.abs(det) < 1e-9) continue; // the wall runs along the ray
-    const rx = gx - px0;
-    const ry = gy - py0;
+    const rx = gx - ex0;
+    const ry = gy - ey0;
     const along = (rx * ay - ry * ax) / det; // how far down that wall
     const t = (ex * ry - ey * rx) / det; // how far up the ray
     if (along >= 0 && along <= 1 && t > far) far = t;
   }
+  if (far === -Infinity) return null;
 
-  if (far === -Infinity) {
-    // Nothing was hit, so the only question left is by how much. The closest the
-    // ray passes to any corner is near enough: this only decides whether the
-    // press was a press on the block, not where on it.
-    let miss = Infinity;
-    for (const [cx, cy] of ring) {
-      miss = Math.min(miss, Math.abs((cx - gx) * ay - (cy - gy) * ax));
-    }
-    const wall = nearestFacade(gx, gy, ring);
-    return { at: [wall.x, wall.y], floor: 1, miss };
+  // A press on the base line itself lands a rounding error under the ground, so
+  // the ground is met with a whisker of slack rather than a hard edge.
+  const z = Math.max(0, far * v.rise);
+  if (far * v.rise < -GRAZE_M) return null; // the road in front, not the block
+
+  if (z > height) {
+    // Over the top of the walls. Either the roof is under the pointer or the
+    // block is not, and where the ray sits at roof height says which.
+    const [rx, ry] = under(height);
+    if (!pointInRing(rx, ry, ring)) return null;
+    const edge = nearestFacade(rx, ry, ring);
+    return { at: [edge.x, edge.y], floor: maxFloor };
   }
 
-  const at: [number, number] = [gx - far * ax, gy - far * ay];
-  const z = far * v.rise;
-  // Above the roof the ray met the top of the block, which is the top storey.
-  let floor = 1;
-  for (let k = 2; k <= maxFloor; k++) {
-    if (Math.abs(eyeOf(k) - z) < Math.abs(eyeOf(floor) - z)) floor = k;
-  }
-  const wall = nearestFacade(at[0], at[1], ring);
-  return { at: [wall.x, wall.y], floor, miss: 0 };
+  // The storey whose band was pressed, counted the way the band is drawn: the
+  // first runs from the ground to one storey height, not from the eye.
+  const floor = Math.max(1, Math.min(maxFloor, Math.floor(z / floorHeight) + 1));
+  const wall = nearestFacade(...under(z), ring);
+  return { at: [wall.x, wall.y], floor };
 }
 
 /**
