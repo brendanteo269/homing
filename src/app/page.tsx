@@ -764,11 +764,7 @@ function OutlookStory({ result }: { result: AnalysisResult }) {
       )}
       <details className="outlook-details">
         <summary>See the planning detail</summary>
-        <p className="hint outlook-explainer">
-          {open === 0
-            ? `Buildings already stand across the whole of this outlook within ${outlook.reachM} m.`
-            : `Of the view still open, ${secured}% is capped all the way out to ${outlook.reachM} m, ${Math.round((outlook.atRiskDegrees / open) * 100)}% carries a ceiling high enough to build into it, and ${Math.round((outlook.unknownDegrees / open) * 100)}% has no published ceiling either way.`}
-        </p>
+        <p className="hint outlook-explainer">{planningSplit(outlook, open)}</p>
         {outlook.protectors.map((p) => (
           <Datum
             key={p.label}
@@ -895,6 +891,48 @@ function whyItLasts(
     return `No published height limit covers most of this view${only}.`;
   }
   return `Most of this view may legally be built up into${only}.`;
+}
+
+/**
+ * How the open view divides, in words somebody would actually use.
+ *
+ * All three shares used to be printed whatever they were, so the ordinary
+ * Singapore case — the plan puts no height on anything in view — came out as
+ * "0% is capped all the way out to 200 m, 0% carries a ceiling high enough to
+ * build into it, and 100% has no published ceiling either way": three numbers,
+ * two of them nothing, and a sentence about ceilings aimed at a reader who has
+ * never had to think about one. Only the parts that exist are named now, and
+ * when only one does it is a sentence rather than a share of itself.
+ */
+function planningSplit(outlook: NonNullable<AnalysisResult["outlook"]>, open: number) {
+  if (open === 0) {
+    return `Buildings already stand across the whole of this view within ${outlook.reachM} m.`;
+  }
+
+  // Why "no height set" is not the same as "we could not find out". Most of
+  // Singapore is zoned by how much floor area a plot may hold, which is not a
+  // height, so the plan genuinely does not answer the question here.
+  const whyNoLimit =
+    "Most of Singapore is zoned by floor area rather than height, so ground with no height set is the ordinary case, not a gap in the data.";
+
+  const { protectedDegrees, atRiskDegrees, unknownDegrees, reachM } = outlook;
+  const pct = (d: number) => `${Math.round((d / open) * 100)}%`;
+
+  const parts = [
+    protectedDegrees && `${pct(protectedDegrees)} is over ground that cannot be built up`,
+    atRiskDegrees && `${pct(atRiskDegrees)} could have something tall built on it`,
+    unknownDegrees && `${pct(unknownDegrees)} has no height limit set`,
+  ].filter((part): part is string => Boolean(part));
+
+  if (parts.length === 1) {
+    if (unknownDegrees) return `Nothing in the open part of this view has a height limit set. ${whyNoLimit}`;
+    if (protectedDegrees) return "All of the open view is over ground that cannot be built up.";
+    return "All of the open view could have something tall built on it.";
+  }
+
+  const list =
+    parts.length === 2 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+  return `Of the view still open within ${reachM} m, ${list}.${unknownDegrees ? ` ${whyNoLimit}` : ""}`;
 }
 
 function share(degrees: number) {
