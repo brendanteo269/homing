@@ -20,7 +20,7 @@ const mono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Homing — sun and views for Singapore homes",
   description:
-    "How much sun a Singapore flat gets, and what blocks its view. From open data, not from listings.",
+    "Sun, shade, and view analysis for any Singapore flat, from open data and solar geometry.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
