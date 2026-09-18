@@ -134,14 +134,15 @@ async function getJson(url: URL, attempts = 4): Promise<OneMapResponse> {
   );
 }
 
-function inSingapore(h: AddressHit) {
+/** Whether a point is in the country this app knows anything about. */
+export function inSingapore(p: LatLng) {
   return (
-    Number.isFinite(h.lat) &&
-    Number.isFinite(h.lng) &&
-    h.lat >= SG_BOUNDS.south &&
-    h.lat <= SG_BOUNDS.north &&
-    h.lng >= SG_BOUNDS.west &&
-    h.lng <= SG_BOUNDS.east
+    Number.isFinite(p.lat) &&
+    Number.isFinite(p.lng) &&
+    p.lat >= SG_BOUNDS.south &&
+    p.lat <= SG_BOUNDS.north &&
+    p.lng >= SG_BOUNDS.west &&
+    p.lng <= SG_BOUNDS.east
   );
 }
 

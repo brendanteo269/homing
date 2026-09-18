@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { analyse } from "@/lib/analyse";
-import { lookupPostal, parsePostal } from "@/lib/onemap";
+import { inSingapore, lookupPostal, parsePostal } from "@/lib/onemap";
 
 export const maxDuration = 120;
 
@@ -53,6 +53,13 @@ export async function POST(request: Request) {
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return NextResponse.json({ error: "lat and lng, or a postal code, are required" }, { status: 400 });
+  }
+  // Every dataset behind this — HDB's register, the Master Plan, the footprint
+  // extract — stops at the coastline. Outside it the engine still answers, and
+  // answers confidently, from nothing at all: a point in the middle of the sea
+  // comes back scored in the nineties because there is no building near it.
+  if (!inSingapore({ lat: lat as number, lng: lng as number })) {
+    return NextResponse.json({ error: "This only covers Singapore" }, { status: 400 });
   }
 
   try {

@@ -55,6 +55,15 @@ const EYE_ABOVE_FLOOR_M = 1.5;
  */
 const ADDRESS_MATCH_M = 200;
 /**
+ * The tallest storey worth answering about. Singapore's tallest residential
+ * block is 64 storeys; past this the number is not a storey somebody lives on,
+ * it is an unchecked number that has reached the eye height and taken the
+ * window with it — at a million, the window sits above the atmosphere and the
+ * report comes back with every neighbour cleared and the industry unshielded.
+ */
+const MAX_FLOOR = 120;
+
+/**
  * With no address to go on, a pin that lands on a car park or a road still has
  * to mean something. Beyond the click radius the nearest block is a guess, and
  * the result says which of the two it was.
@@ -101,7 +110,8 @@ export async function analyse(input: AnalyseInput): Promise<AnalysisResult> {
   // named building nearby raises the hit rate and captions a bus depot "Church
   // of Christ the King", which is worse than saying nothing: a reader can work
   // with an unnamed category and cannot work with a confident wrong answer.
-  const noise = known ? computeNoise(viewpoint, horizon, plan, await named) : null;
+  const places = await named;
+  const noise = known ? computeNoise(viewpoint, horizon, plan, places) : null;
 
   const ground = plan.zones.flatMap((zn) => {
     const kind = groundKind(zn.use);
@@ -234,7 +244,7 @@ function placeViewpoint(
   faces: Face[],
   windowAt: [number, number] | undefined,
 ): Viewpoint {
-  const floor = Math.max(1, Math.round(input.floor));
+  const floor = Math.min(MAX_FLOOR, Math.max(1, Math.round(input.floor)));
 
   if (!host) {
     // Nothing to attach to — treat the pin as a free-standing window.
