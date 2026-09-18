@@ -604,8 +604,8 @@ function palette() {
   const fallback = {
     ground: "#f6e6cd",
     grid: "rgba(36,72,85,0.07)",
-    water: "#cadfe2",
-    green: "#d9e2d1",
+    water: "#a8d3dd",
+    green: "#cfe0bd",
     road: "#eee0c4",
     shadow: "rgba(135,79,65,0.16)",
     roof: "#eddcc2",
