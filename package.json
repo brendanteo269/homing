@@ -2,7 +2,7 @@
   "name": "homing",
   "version": "0.1.0",
   "private": true,
-  "description": "Homing — neutral sun and blockage analysis for Singapore homes.",
+  "description": "Homing \u2014 neutral sun and blockage analysis for Singapore homes.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,7 +12,8 @@
     "analyse": "tsx scripts/analyse.ts",
     "calibrate": "tsx scripts/calibrate.ts",
     "build-hdb": "tsx scripts/build-hdb.ts",
-    "build-masterplan": "tsx scripts/build-masterplan.ts"
+    "build-masterplan": "tsx scripts/build-masterplan.ts",
+    "build-footprints": "tsx scripts/build-footprints.ts"
   },
   "dependencies": {
     "next": "^16.3.5",

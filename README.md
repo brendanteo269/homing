@@ -16,6 +16,7 @@ The included data files are enough to run the app. To refresh them from their pu
 ```bash
 npm run build-hdb
 npm run build-masterplan
+npm run build-footprints   # needs osmium: brew install osmium-tool
 ```
 
 ## What it reports
@@ -39,7 +40,7 @@ The score weights and reference values are open in [`src/lib/score.ts`](src/lib/
 
 ## Data and sources
 
-HDB block data and URA Master Plan layers are from [data.gov.sg](https://data.gov.sg/). Other building footprints and heights come from [OpenStreetMap](https://www.openstreetmap.org/copyright) via [Overpass](https://overpass-api.de/); addresses come from [OneMap](https://www.onemap.gov.sg/). Solar position uses NOAA equations and an ASHRAE clear-sky beam model.
+HDB block data and URA Master Plan layers are from [data.gov.sg](https://data.gov.sg/). Other building footprints and heights come from [OpenStreetMap](https://www.openstreetmap.org/copyright), built into `data/footprints.json.gz` from a [Geofabrik](https://download.geofabrik.de/) extract rather than queried per request — a cold neighbourhood took the best part of a minute of [Overpass](https://overpass-api.de/) time, which is still the fallback when that file has not been built. The derived file is OpenStreetMap data and carries its ODbL terms. Addresses come from [OneMap](https://www.onemap.gov.sg/). Solar position uses NOAA equations and an ASHRAE clear-sky beam model.
 
 ## Useful commands
 
@@ -47,6 +48,7 @@ HDB block data and URA Master Plan layers are from [data.gov.sg](https://data.go
 npm run analyse -- 560406 --floor 8
 npm run calibrate
 npm run check-outlook
+npm run build-footprints
 npm run typecheck
 npm run build
 ```

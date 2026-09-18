@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { boundingBox, pointInPolygon, polygonArea, polygonCentroid, type Projection } from "./geo";
+import { footprintsNear, namedPlaceRows, type NamedPlaceRow } from "./footprints";
 import { hdbBlocksNear, hdbHeight, type HdbBlock } from "./hdb";
 import type { Building, HeightSource, LatLng } from "./types";
 
@@ -154,13 +155,25 @@ async function fetchOsmBuildings(
   radiusM: number,
   projection: Projection,
 ): Promise<BuildingSet> {
-  const bbox = boundingBox(origin, radiusM);
-  const query = `[out:json][timeout:60];way["building"](${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)});out geom;`;
-  const raw = await runQuery(query);
+  // The built file is the same OpenStreetMap data Overpass would have sent, so
+  // it is turned into the same elements and read by the same code below. The
+  // live query stays as the fallback for a checkout that has not built one.
+  const local = await footprintsNear(origin, radiusM);
+  const raw: OverpassResponse = local
+    ? {
+        elements: local.footprints.map((f) => ({
+          type: "way",
+          id: f.id,
+          geometry: f.ring,
+          tags: f.tags,
+        })),
+        osm3s: { timestamp_osm_base: local.timestamp ?? undefined },
+      }
+    : await runQuery(overpassQuery(origin, radiusM));
 
   const buildings: Building[] = [];
   for (const el of raw.elements) {
-    if (el.type !== "way" || !el.geometry || el.geometry.length < 4) continue;
+    if (el.type !== "way" || !el.geometry || el.geometry.length < 3) continue;
     const tags = el.tags ?? {};
     if (tags.building === "roof" || tags.location === "underground") continue;
 
@@ -193,6 +206,11 @@ async function fetchOsmBuildings(
   }
 
   return { buildings, dataTimestamp: raw.osm3s?.timestamp_osm_base ?? null };
+}
+
+function overpassQuery(origin: LatLng, radiusM: number) {
+  const bbox = boundingBox(origin, radiusM);
+  return `[out:json][timeout:60];way["building"](${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)});out geom;`;
 }
 
 const RESIDENTIAL_BUILDINGS = [
@@ -431,11 +449,31 @@ const NAMED_PLACE_FILTERS = [
   '["industrial"]',
 ];
 
+/**
+ * Whether what OpenStreetMap calls a name is one.
+ *
+ * Inside an industrial estate the individual units are mapped as buildings and
+ * named for their unit number — "16", "30", "1079". Passing those through
+ * produces "30, 240 m to your right", which reads as a confident answer and
+ * says nothing; the estate's own name, or the bare zoning, is more use than a
+ * number the reader cannot place. Two letters together is enough to keep the
+ * real ones, including "1-Net North Data Center" and "60 SKM Industrial
+ * Building", and enough to drop every bare unit number.
+ */
+function usableName(name: string | undefined | null): name is string {
+  return !!name && /\p{L}{2}/u.test(name);
+}
+
 export async function fetchNamedPlaces(
   origin: LatLng,
   radiusM: number,
   projection: Projection,
 ): Promise<NamedPlace[]> {
+  // The built file carries these too, matched on the same tags. Only when
+  // there is no file does this fall back to asking Overpass live.
+  const local = await namedPlaceRows();
+  if (local) return toNamedPlaces(local, projection);
+
   const bbox = boundingBox(origin, radiusM);
   const box = `(${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)})`;
   // `out geom`, not `out center`: an industrial estate has to be matched by what
@@ -459,7 +497,7 @@ export async function fetchNamedPlaces(
   const places: NamedPlace[] = [];
   for (const el of raw.elements) {
     const name = el.tags?.name;
-    if (!name) continue;
+    if (!usableName(name)) continue;
 
     // Overpass marks an area by repeating its first node at the end. Anything
     // that does not close is a line, and a line is not ground: it names nothing
@@ -488,6 +526,29 @@ export async function fetchNamedPlaces(
     if (!centre) continue;
 
     places.push({ name, ring: points, x: centre[0], y: centre[1] });
+  }
+  return places;
+}
+
+
+/**
+ * The built rows, projected into this request's local metres. The centre is
+ * computed from the outline rather than stored, so it stays the centroid the
+ * live query produced and not whichever vertex happened to be written first.
+ */
+function toNamedPlaces(rows: NamedPlaceRow[], projection: Projection): NamedPlace[] {
+  const places: NamedPlace[] = [];
+  for (const row of rows) {
+    if (!usableName(row.name)) continue;
+    if (!row.ring) {
+      const [x, y] = projection.toLocal({ lat: row.lat, lng: row.lon });
+      places.push({ name: row.name, ring: null, x, y });
+      continue;
+    }
+    const ring = row.ring.map((pt) => projection.toLocal({ lat: pt.lat, lng: pt.lon }));
+    if (ring.length < 3) continue;
+    const centre = polygonCentroid(ring);
+    places.push({ name: row.name, ring, x: centre[0], y: centre[1] });
   }
   return places;
 }
