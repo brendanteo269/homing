@@ -88,6 +88,23 @@ const PLACE_FILTERS = [
   "nwr/industrial",
 ];
 
+/**
+ * The grounds a building can stand in without being named itself.
+ *
+ * A hospital or a school is mapped as a site polygon carrying the name, with
+ * the wards and blocks inside it tagged `building=yes` and nothing else — so
+ * Changi General Hospital reached the drawing as six anonymous masses called
+ * "Building". These outlines carry no building tag, so the buildings filter
+ * drops them; kept separately, they can lend their name to what stands inside.
+ *
+ * Narrow on purpose. A site only earns this if it is the thing a reader would
+ * name when pointing at the block: the campus, not the car park it shares a
+ * fence with.
+ */
+const SITE_FILTERS = [
+  "nwr/amenity=hospital,clinic,school,college,university",
+];
+
 /** A tag whose value is never read, only its presence, need not carry one. */
 const PRESENCE_ONLY = new Set(["amenity", "shop", "office", "tourism", "leisure", "aeroway", "parking"]);
 
@@ -128,6 +145,16 @@ async function main() {
     osmium(["export", "-f", "geojsonseq", "-a", "id", "-o", exported, "--overwrite", "-e", onlyBuildings]),
   );
 
+  const onlySites = path.join(CACHE_DIR, "sg-sites.osm.pbf");
+  const sitesExported = path.join(CACHE_DIR, "sg-sites.geojsonseq");
+
+  step("keeping named sites", () =>
+    osmium(["tags-filter", "-o", onlySites, "--overwrite", clipped, ...SITE_FILTERS]),
+  );
+  step("assembling site geometry", () =>
+    osmium(["export", "-f", "geojsonseq", "-o", sitesExported, "--overwrite", "-e", onlySites]),
+  );
+
   const onlyPlaces = path.join(CACHE_DIR, "sg-places.osm.pbf");
   const placesExported = path.join(CACHE_DIR, "sg-places.geojsonseq");
 
@@ -140,15 +167,22 @@ async function main() {
 
   const { rows, skipped } = await encode(exported);
   const places = await encodePlaces(placesExported);
+  // A site is the same shape as a place — a name and the ground it covers — so
+  // it is encoded and read back by the same code. They are kept apart because
+  // they answer different questions: a place names a noise source, a site names
+  // a building. Letting a hospital into the noise list would have it reported
+  // as something loud on the strength of standing nearby.
+  const sites = await encodePlaces(sitesExported);
   // The replication stamp lives on Geofabrik's own header; osmium's derived
   // files do not carry it forward, so it is read from the extract itself.
   const timestamp = await sourceTimestamp(pbf);
 
-  const payload = { version: 1, builtAt: new Date().toISOString(), timestamp, count: rows.length, rows, places };
+  const payload = { version: 2, builtAt: new Date().toISOString(), timestamp, count: rows.length, rows, places, sites };
   const gz = gzipSync(Buffer.from(JSON.stringify(payload)), { level: 9 });
   await writeFile(OUT_FILE, gz);
   await rm(exported, { force: true });
   await rm(placesExported, { force: true });
+  await rm(sitesExported, { force: true });
 
   const tagged = rows.filter((r) => r[1]["height"] || r[1]["building:levels"]).length;
   console.log(`\n  ${rows.length.toLocaleString()} buildings -> ${(gz.length / 1e6).toFixed(2)} MB gzipped`);
@@ -157,6 +191,7 @@ async function main() {
   // building, so most of what is passed over here is vertices, not failures.
   console.log(`  passed over ${skipped.toLocaleString()} features that are not building outlines`);
   console.log(`  ${places.length.toLocaleString()} named places (estates, depots, substations)`);
+  console.log(`  ${sites.length.toLocaleString()} named sites (hospitals, schools, campuses)`);
   console.log(`  OpenStreetMap data as of ${timestamp ?? "unknown"}`);
   console.log(`\n  wrote ${path.relative(process.cwd(), OUT_FILE)}`);
 }

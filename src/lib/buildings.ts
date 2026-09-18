@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { boundingBox, pointInPolygon, polygonArea, polygonCentroid, type Projection } from "./geo";
-import { footprintsNear, namedPlaceRows, type NamedPlaceRow } from "./footprints";
+import { footprintsNear, namedPlaceRows, siteRows, type NamedPlaceRow } from "./footprints";
 import { hdbBlocksNear, hdbHeight, type HdbBlock } from "./hdb";
 import type { Building, HeightSource, LatLng } from "./types";
 
@@ -67,9 +67,10 @@ export async function fetchBuildings(
   radiusM: number,
   projection: Projection,
 ): Promise<BuildingSet> {
-  const [osm, hdb] = await Promise.all([
+  const [osm, hdb, sites] = await Promise.all([
     fetchOsmBuildings(origin, radiusM, projection),
     hdbBlocksNear(origin, radiusM),
+    siteRows(),
   ]);
 
   const official = hdb.map((block) => toBuilding(block, projection));
@@ -79,7 +80,47 @@ export async function fetchBuildings(
   // a guessed height are sized against HDB's real ones rather than against
   // whatever their neighbours happen to be tagged with.
   fillInferredHeights(buildings);
+  nameFromSites(buildings, sites, projection);
   return { buildings, dataTimestamp: osm.dataTimestamp };
+}
+
+/**
+ * What to call a block that OpenStreetMap never named.
+ *
+ * A hospital's wards and a school's halls are mapped as bare `building=yes`
+ * inside a site polygon that carries the name, and the polygon has no building
+ * tag, so it is not massing and never reaches the model. Changi General
+ * Hospital arrived as six anonymous blocks called "Building". Standing inside
+ * the site is what names them.
+ *
+ * Only where there is nothing better: a block with its own name, or an address
+ * to make one from, already says what it is. The smallest site wins, so a
+ * clinic on a hospital campus is named for the clinic rather than the campus.
+ */
+function nameFromSites(
+  buildings: Building[],
+  sites: NamedPlaceRow[] | null,
+  projection: Projection,
+) {
+  const anonymous = buildings.filter((b) => !b.name && !b.blockNo);
+  if (!sites?.length || anonymous.length === 0) return;
+
+  // Every site in the country is projected, not just the near ones. There are
+  // a few hundred of them and the alternative is a bounding-box test that costs
+  // the same walk over the same vertices.
+  const grounds = sites
+    .filter((site) => site.ring && usableName(site.name))
+    .map((site) => {
+      const ring = site.ring!.map((p) => projection.toLocal({ lat: p.lat, lng: p.lon }));
+      return { name: site.name, ring, area: Math.abs(polygonArea(ring)) };
+    })
+    .sort((a, b) => a.area - b.area);
+
+  for (const b of anonymous) {
+    const [x, y] = polygonCentroid(b.ring);
+    const ground = grounds.find((g) => pointInPolygon(x, y, g.ring));
+    if (ground) b.name = ground.name;
+  }
 }
 
 /** HDB's record of one block, as the engine's geometry. */

@@ -38,6 +38,7 @@ interface Payload {
   timestamp: string | null;
   rows: Row[];
   places?: PlaceRow[];
+  sites?: PlaceRow[];
 }
 
 export interface Footprint {
@@ -63,6 +64,7 @@ interface FootprintIndex {
   timestamp: string | null;
   grid: Map<string, Footprint[]>;
   places: NamedPlaceRow[];
+  sites: NamedPlaceRow[];
 }
 
 let loading: Promise<FootprintIndex | null> | null = null;
@@ -132,7 +134,12 @@ function index(payload: Payload): FootprintIndex {
     }
   }
 
-  return { timestamp: payload.timestamp, grid, places: decodePlaces(payload.places ?? []) };
+  return {
+    timestamp: payload.timestamp,
+    grid,
+    places: decodePlaces(payload.places ?? []),
+    sites: decodePlaces(payload.sites ?? []),
+  };
 }
 
 function decodePlaces(rows: PlaceRow[]): NamedPlaceRow[] {
@@ -158,6 +165,17 @@ function decodePlaces(rows: PlaceRow[]): NamedPlaceRow[] {
 export async function namedPlaceRows(): Promise<NamedPlaceRow[] | null> {
   const loaded = await loadFootprints();
   return loaded ? loaded.places : null;
+}
+
+/**
+ * The grounds a building can stand in: hospital campuses, school sites. Same
+ * shape as a named place and read the same way, kept apart because a site
+ * names a building and a place names something loud, and the two must never
+ * be mistaken for each other. Null before the file has been built.
+ */
+export async function siteRows(): Promise<NamedPlaceRow[] | null> {
+  const loaded = await loadFootprints();
+  return loaded ? loaded.sites : null;
 }
 
 /**
